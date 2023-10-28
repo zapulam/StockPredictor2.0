@@ -1,5 +1,6 @@
 '''
 Contains S&P 500 dataset class used for training
+By: Zachary Pulliam
 '''
 
 import os
