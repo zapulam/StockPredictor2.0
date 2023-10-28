@@ -83,14 +83,6 @@ class SP_500(Dataset):
             
             # add decomposed column to dataframe
             decomp[col] = result.resid
-            
-            # create seasonal forecast component based on moving avg
-            forecast['seasonal_forecast'] = result.seasonal[-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()
-            
-            # create trend forecast component based on OLS
-            model = LinearRegression()
-            model.fit(np.array(data.index[-50:]).reshape(-1, 1), result.trend[-50:])
-            forecast['trend_forecast'] = model.intercept_ + model.coef_ * range(data.index[-1], data.index[-1]+252)
 
         # normalize input data
         mins, maxs = decomp.min(), decomp.max() 
