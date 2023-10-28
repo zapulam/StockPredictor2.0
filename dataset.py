@@ -72,7 +72,7 @@ class SP_500(Dataset):
 
         # read data
         file = self.data[idx]
-        data = pd.read_csv(os.path.join(self.folder, file), index_col=0)[['Open', 'High', 'Low', 'Volume', 'Close']] 
+        data = pd.read_csv(os.path.join(self.folder, file))[['Open', 'High', 'Low', 'Volume', 'Close']] 
         
         # detrend and deseason all columns
         decomp, forecast = pd.DataFrame(), pd.DataFrame()
@@ -96,7 +96,7 @@ class SP_500(Dataset):
         normalized = (decomp-mins)/(maxs-mins)
         
         # difference normalized data
-        differenced = normalized.diff()
+        differenced = normalized.diff().iloc[1: , :]
 
         # remove outliers
         for col in differenced.columns:
