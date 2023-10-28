@@ -1,5 +1,6 @@
 '''
-Purpose: contains PyTorch LSTM model class
+Contains PyTorch LSTM model class
+By: Zachary Pulliam
 '''
 
 import torch

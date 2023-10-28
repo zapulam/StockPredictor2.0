@@ -1,5 +1,6 @@
 '''
-Purpose: trains PyTorch LSTM on S&P 500 daily price data
+Trains PyTorch LSTM on S&P 500 daily price data
+By: Zachary Pulliam
 '''
 
 import os

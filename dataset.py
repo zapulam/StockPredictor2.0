@@ -1,5 +1,5 @@
 '''
-Purpose: contains S&P 500 dataset class used for training
+Contains S&P 500 dataset class used for training
 '''
 
 import os
