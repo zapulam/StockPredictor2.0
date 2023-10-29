@@ -10,7 +10,7 @@ import pandas as pd
 
 from torch.utils.data import Dataset
 
-from utils import decompose
+from decomposition import decompose
 
 
 class SP_500(Dataset):

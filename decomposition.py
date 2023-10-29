@@ -72,11 +72,11 @@ def decompose(data, forecast=False):
     decomp.drop(columns=['Date', 'DayOfWeek'], inplace=True)
 
     # difference normalized data
-    differenced = normalized.diff().iloc[1: , :]
+    differenced = decomp.diff().iloc[1: , :]
 
     # normalize input data
     mins, maxs = differenced.min(), differenced.max() 
-    normalized = (differenced-mins)/(differenced-mins)
+    normalized = (differenced-mins)/(maxs-mins)
 
     # remove outliers
     for col in normalized.columns:
@@ -87,6 +87,6 @@ def decompose(data, forecast=False):
     # return decomposed data and forecasts
     if forecast:
         forecasts = {'trend': trends, 'seasonal': seasonals, 'dow_effects': dow_effects}
-        return (normalized, forecasts)
+        return [normalized, forecasts]
 
-    return (normalized)
+    return [normalized]
