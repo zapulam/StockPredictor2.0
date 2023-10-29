@@ -7,11 +7,10 @@ import os
 import torch
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
 
-from scipy import stats
 from torch.utils.data import Dataset
-from sklearn.linear_model import LinearRegression
+
+from utils import decompose
 
 
 class SP_500(Dataset):
@@ -73,32 +72,13 @@ class SP_500(Dataset):
 
         # read data
         file = self.data[idx]
-        data = pd.read_csv(os.path.join(self.folder, file))[['Open', 'High', 'Low', 'Volume', 'Close']] 
+        data = pd.read_csv(os.path.join(self.folder, file)).drop(columns=['Adj Close'])
         
-        # detrend and deseason all columns
-        decomp, forecast = pd.DataFrame(), pd.DataFrame()
-        for col in data.columns:
-            # detrend and deason column
-            result = sm.tsa.seasonal_decompose(data[col], model='additive', period=252, extrapolate_trend=25, two_sided=False)
-            
-            # add decomposed column to dataframe
-            decomp[col] = result.resid
-
-        # normalize input data
-        mins, maxs = decomp.min(), decomp.max() 
-        normalized = (decomp-mins)/(maxs-mins)
-        
-        # difference normalized data
-        differenced = normalized.diff().iloc[1: , :]
-
-        # remove outliers
-        for col in differenced.columns:
-            z_scores = np.abs(stats.zscore(differenced[col]))
-            outliers = z_scores > 3
-            differenced[col][outliers] = differenced[col].mean()
+        # decompose data
+        input = decompose(data)[0]
 
         # convert to tensor
-        input = torch.tensor(differenced.values)
+        input = torch.tensor(input.values)
 
         return input
     
