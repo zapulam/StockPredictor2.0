@@ -15,7 +15,7 @@ from sklearn.linear_model import LinearRegression
 
 def decompose(data, forecast=False):
     '''
-    Gets individual stock history for training 
+    Decomposes time series for training and also forecasts effects if desired 
 
     Inputs:
         data (pd.DataFrame) - timeseries data for decomposition with n columns
@@ -94,6 +94,17 @@ def decompose(data, forecast=False):
 
 
 def create_forecast(data, model, horizon):
+    '''
+    Creates forecast sequentially
+
+    Inputs:
+        data (pd.DataFrame) - timeseries data to forecast
+        model (LSTM) - forecasting model 
+
+    Outputs:
+        pred (pd.DataFrame) - predictions for all features
+
+    '''
     # copy data
     x = data
     
@@ -111,10 +122,30 @@ def create_forecast(data, model, horizon):
 
 
 def compose(residual, effects):
+    '''
+    Composes residual forecast and effects
+
+    Inputs:
+        
+
+    Outputs:
+        
+
+    '''
     pass
 
 
 def forecast_pipeline(data, model, horizon):
+    '''
+    Run all steps to create time series forecast 
+
+    Inputs:
+        
+
+    Outputs:
+        
+
+    '''
     # decompose data
     input, effects_forecasts = decompose(data, forecast=True)
     
