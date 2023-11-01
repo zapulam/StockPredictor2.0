@@ -51,7 +51,7 @@ def decompose(data, forecast=False):
             decomp[col] = result.resid
 
             # get day of week effects
-            effect = pd.DataFrame(decomp[col] .mean() / decomp.groupby('DayOfWeek')[col].mean().rename("Effect")).reset_index()
+            effect = pd.DataFrame(decomp[col].mean() / decomp.groupby('DayOfWeek')[col].mean().rename("Effect")).reset_index()
             decomp = pd.merge(decomp, effect, on='DayOfWeek', how='inner')
             decomp[col] = decomp[col] * decomp['Effect']
             decomp.drop(columns=['Effect'], inplace=True)
@@ -158,11 +158,17 @@ def compose(data, forecast, effects, horizon):
 
     # multiply dow effect
     for col in forecast.columms:
-        forecast[col]
+        forecast['Effect'] = forecast['DayOfWeek'].map(effects['dow_effects'][col])
+        forecast[col] = forecast[col] / forecast['Effect']
+        forecast.drop(columns=['Effect'], inplace=True)
 
     # add seasonal effect
+    forecast = forecast + effects['seasonal'].iloc[:horizon]
 
     # add trend effect
+    forecast = forecast + effects['trend'].iloc[:horizon]
+
+    return forecast
 
 
 def forecast_pipeline(data, model, horizon):
@@ -186,6 +192,6 @@ def forecast_pipeline(data, model, horizon):
     composition = compose(data, residual_forecast, effects_forecasts, horizon)
     
     # get close data only
-    close = composition.iloc[:, 4]
+    close_forecast = composition.iloc[:, 4]
     
-    return close
+    return close_forecast
