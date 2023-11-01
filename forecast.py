@@ -8,6 +8,7 @@ import datetime
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from datetime import date, timedelta
 
 from scipy import stats
 from sklearn.linear_model import LinearRegression
@@ -41,7 +42,7 @@ def decompose(data, forecast=False):
     if forecast:
         trends = pd.DataFrame()
         seasonals = pd.DataFrame()
-        dow_effects = pd.DataFrame({'DayOfWeek': [(i + datetime.date.today().weekday()) % 6 for i in range(252)]})
+        dow_effects = pd.DataFrame()
 
     for col in data.columns:
         if col not in ['Date', 'DayOfWeek']:
@@ -62,12 +63,11 @@ def decompose(data, forecast=False):
                 model.fit(np.array(data.index[-50:]).reshape(-1, 1), result.trend[-50:])
                 trends[col] = model.intercept_ + model.coef_ * range(data.index[-1], data.index[-1]+252)
 
-                # use moving avergae for seasonal component
+                # use moving average for seasonal component
                 seasonals[col] = result.seasonal[-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()
 
-                # create effects for day of week
-                mapping_dict = effect.set_index('DayOfWeek')['Effect'].to_dict()
-                dow_effects[col] = effect['DayOfWeek'].map(mapping_dict)
+                # store effects for day of week
+                dow_effects[col] = effect['Effect']
 
     # drop date columns
     decomp.drop(columns=['Date', 'DayOfWeek'], inplace=True)
@@ -121,7 +121,7 @@ def create_forecast(data, model, horizon):
     return pred
 
 
-def compose(residual, effects):
+def compose(data, forecast, effects, horizon):
     '''
     Composes residual forecast and effects
 
@@ -132,7 +132,37 @@ def compose(residual, effects):
         
 
     '''
-    pass
+    # holidays to drop from prediciton
+    holidays = pd.read_csv(r'tools/NASDAQ_Holidays.csv')['Date']
+
+    # get dates up to 1 year out
+    current_date = date.today()
+    next_year = current_date + timedelta(days=365)
+    date_range = pd.date_range(start=current_date, end=next_year, freq='D')
+
+    # create a DataFrame with a date column
+    df = pd.DataFrame({'Date': date_range})
+    df['DayOfWeek'] = df['Date'].dt.dayofweek
+
+    df = df[df['DayOfWeek'].isin([0,1,2,3,4])]
+    df = df[~df['Date'].isin(holidays)]
+    df.reset_index(drop=True).iloc[:horizon+1]
+
+    # undo normalization
+    forecast = pd.DataFrame(forecast.numpy(), columns=['Open', 'High', 'Low', 'Close', 'Volume'])
+    mins, maxs = data.min(), data.max() 
+    forecast = (forecast * (maxs-mins)) + mins
+
+    # undo differencing
+    forecast = data.iloc[-1] + forecast.cumsum()
+
+    # multiply dow effect
+    for col in forecast.columms:
+        forecast[col]
+
+    # add seasonal effect
+
+    # add trend effect
 
 
 def forecast_pipeline(data, model, horizon):
@@ -153,7 +183,7 @@ def forecast_pipeline(data, model, horizon):
     residual_forecast = create_forecast(input, model, horizon)
     
     # compose residual forecasts and effects
-    composition = compose(residual_forecast, effects_forecasts)
+    composition = compose(data, residual_forecast, effects_forecasts, horizon)
     
     # get close data only
     close = composition.iloc[:, 4]
