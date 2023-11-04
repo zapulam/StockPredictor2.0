@@ -14,7 +14,7 @@ from scipy import stats
 from sklearn.linear_model import LinearRegression
 
 
-def decompose(data, forecast=False):
+def decompose(data, horizon, forecast=False):
     '''
     Decomposes time series for training and also forecasts effects if desired 
 
@@ -30,6 +30,10 @@ def decompose(data, forecast=False):
             - dow (pd.DataFrame) - effect for each day of week
 
     '''
+    # set max horizon
+    if horizon and horizon > 252:
+        horizon = 252
+
     # add day of week column
     data['Date'] = pd.to_datetime(data['Date'])
     data['DayOfWeek'] = data['Date'].dt.dayofweek
@@ -61,10 +65,10 @@ def decompose(data, forecast=False):
                 # fit OLS for trend component
                 model = LinearRegression()
                 model.fit(np.array(data.index[-50:]).reshape(-1, 1), result.trend[-50:])
-                trends[col] = model.intercept_ + model.coef_ * range(data.index[-1], data.index[-1]+252)
+                trends[col] = model.intercept_ + model.coef_ * range(data.index[-1], data.index[-1]+horizon)
 
                 # use moving average for seasonal component
-                seasonals[col] = result.seasonal[-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()
+                seasonals[col] = result.seasonal[-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()[:horizon]
 
                 # store effects for day of week
                 dow_effects[col] = effect['Effect']

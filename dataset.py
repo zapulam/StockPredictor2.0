@@ -30,18 +30,16 @@ class SP_500(Dataset):
         files = []
 
         # set max file length ( 5 years worth of data )
-        max = 0
-        for file in all_files:
-            df = pd.read_csv(os.path.join(folder, file), index_col=0)
-            length = len(df.index) 
-            if length > max:
-                max = length
-
-        # remove files with less than 5 years of data
+        max = 1257
         for file in all_files:
             df = pd.read_csv(os.path.join(folder, file), index_col=0)
             if len(df.index) == max:
                 files.append(file)
+            elif len(df.index) > max:
+                df.iloc[:1257].to_csv(os.path.join(folder, file))
+                files.append(file)
+            elif len(df.index) < max:
+                pass
 
         self.data = files
 
@@ -75,7 +73,7 @@ class SP_500(Dataset):
         data = pd.read_csv(os.path.join(self.folder, file)).drop(columns=['Adj Close'])
         
         # decompose data
-        input = decompose(data)[0]
+        input = decompose(data, None, False)[0]
 
         # convert to tensor
         input = torch.tensor(input.values)

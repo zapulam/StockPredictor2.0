@@ -102,18 +102,17 @@ def train(args):
 
         # Training
         for _, data in enumerate(tqdm(trainloader, desc='Training', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
-            inputs = data[0]
 
             if 'cuda' in device:
-                inputs = inputs.cuda()
+                data = data.cuda()
 
             # initialize seqs list of length len(series)-lookback with
             #   X of size (bs, n, num_feats) and Y of size (bs, 1, numfeats)
             seqs = []
 
             # Create seqs
-            for i in range(lookback, inputs.shape[1]-horizon, stride):
-                seqs.append([inputs[:, 0:i, :], inputs[:, i:i+horizon, :]])
+            for i in range(lookback, data.shape[1]-horizon, stride):
+                seqs.append([data[:, 0:i, :], data[:, i:i+horizon, :]])
 
             # train model for each sequence
             for _, seq in enumerate(seqs):
@@ -260,7 +259,7 @@ def parse_args():
 
     parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs.')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
-    parser.add_argument('--bs', type=int, default=16, help='Batch size')
+    parser.add_argument('--bs', type=int, default=4, help='Batch size')
     parser.add_argument('--workers', type=int, default=0, help='Number of workers')
 
     parser.add_argument('--lookback', type=int, default=252, help='Minimum lookback range (252 = 1 year of data)')
