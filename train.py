@@ -110,7 +110,7 @@ def train(args):
             #   X of size (bs, n, num_feats) and Y of size (bs, 1, numfeats)
             seqs = []
 
-            # Create seqs
+            # create seqs
             for i in range(lookback, data.shape[1]-horizon, stride):
                 seqs.append([data[:, 0:i, :], data[:, i:i+horizon, :]])
 
@@ -152,18 +152,17 @@ def train(args):
         # validation
         with torch.no_grad():
             for _, data in enumerate(tqdm(valloader, desc='Validating', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
-                inputs = data[0]
 
                 if 'cuda' in device:
-                    inputs = inputs.cuda()
+                    data = data.cuda()
 
                 # initialize seqs list of length len(series)-lookback with
                 #   X of size (bs, n, num_feats) and Y of size (bs, 1, numfeats)
                 seqs = []
 
                 # Create seqs
-                for i in range(lookback, inputs.shape[1]-horizon, stride):
-                    seqs.append([inputs[:, 0:i, :], inputs[:, i:i+horizon, :]])
+                for i in range(lookback, data.shape[1]-horizon, stride):
+                    seqs.append([data[:, 0:i, :], data[:, i:i+horizon, :]])
 
                 # train model for each sequence
                 for _, seq in enumerate(seqs):
