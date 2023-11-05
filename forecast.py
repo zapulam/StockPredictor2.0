@@ -63,7 +63,7 @@ def decompose(data, horizon, forecast=False):
 
             decomp[col] = residuals[col] * residuals['Effect']
 
-            # creates trend and seasonal forecasts for next 252 days (1 trading year)
+            # creates trend and seasonal forecasts for next 252 days (1 trading year) for all features
             if forecast:
                 # fit OLS for trend component
                 model = LinearRegression()
