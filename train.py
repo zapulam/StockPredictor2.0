@@ -4,11 +4,13 @@ By: Zachary Pulliam
 '''
 
 import os
+import sys
 import time
 import torch
 import argparse
 
 from tqdm import tqdm
+from termcolor import colored, cprint
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 
@@ -58,13 +60,16 @@ def train(args):
     trainloader = DataLoader(dataset=train, batch_size=bs, shuffle=True, num_workers=workers)
     valloader = DataLoader(dataset=val, batch_size=bs, shuffle=True, num_workers=workers)
 
-    print("--> Dataloaders created for training and validating")
+    print('')
+    cprint("Checkpoint: ", "cyan", end='')
+    cprint("Dataloaders created for training and validating.", "green")
 
     # create model
     model = LSTM(input_dim=5, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=5)
     model = model.to(device)
 
-    print("--> Model created and sent to device")
+    cprint("Checkpoint: ", "cyan", end='')
+    cprint(f"Model created and sent to {device}.", "green")
 
     # define loss and optimizer
     criterion = torch.nn.MSELoss(reduction='mean')
@@ -84,16 +89,24 @@ def train(args):
     # make weights folder
     os.mkdir(os.path.join(newpath, 'weights'))
 
-    print(f"\nCreated folder \"{newpath}\"")
+
+    cprint("Checkpoint: ", "cyan", end='')
+    cprint(f"Checkpoint: Created folder \"{newpath}\".", "green")
 
     # create logging file
     with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
         f.write('Time, Train_Loss, Train_Accuracy, Valid_Loss, Valid_Accuracy\n')
 
-    print("\nBeginning training...")
+    print('')
+    cprint("Starting training...", "green")
 
     for epoch in range(epochs):
-        print(f"\nEpoch: {epoch + 1} of {epochs}")
+        print('')
+        cprint(f"Epoch: ", "cyan", end='')
+        cprint(f"{epoch + 1} ", "yellow", end='')
+        cprint(f"of ", "cyan", end='')
+        cprint(f"{epochs}", "yellow")
+
         start = time.time()
 
         # initialize train and valid loss and accuracy logging lost
@@ -213,17 +226,23 @@ def train(args):
             torch.save([model.kwargs, model.state_dict()], os.path.join(newpath, "weights\\best.pth"))
 
         # print logging
-        print(f"Time: {round(end-start, 3)}   ", end="")
-        print(f"Train Loss: {round(avg_t_loss, 5)}   ", end="")
-        print(f"Train Acc: {round(avg_t_acc, 5)}   ", end="")
-        print(f"Valid Loss: {round(avg_v_loss, 5)}   ", end="")
-        print(f"Valid Acc: {round(avg_v_acc, 5)}   ", end="\n")
+        cprint(f"Time: ", "yellow", end="")
+        cprint(f"{round(end-start, 3)}   ", "cyan", end="")
+        cprint(f"Train Loss: ", "yellow", end="")
+        cprint(f"{round(avg_t_loss, 5)}   ", "cyan", end="")
+        cprint(f"Train Acc: ", "yellow", end="")
+        cprint(f"{round(avg_t_acc, 5)}   ", "cyan", end="")
+        cprint(f"Valid Loss: ", "yellow", end="")
+        cprint(f"{round(avg_v_loss, 5)}   ", "cyan", end="")
+        cprint(f"Valid Acc: ", "yellow", end="")
+        cprint(f"{round(avg_v_acc, 5)}   ", "cyan", end="\n")
 
         # logging
         with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
             f.write(f"{round(end-start, 3)}, {round(avg_t_loss, 5)}, {round(avg_t_acc, 5)}, {round(avg_v_loss, 5)}, {round(avg_v_acc, 5)}\n")
         
-    print(f'\nFinished Training - Models and metrics saved to: \"{newpath}\"')
+    cprint(f"\nFinished Training: ", "cyan", end="")
+    cprint("Models and metrics saved to: \"{newpath}\"", "green")
 
 
 def parse_args():
