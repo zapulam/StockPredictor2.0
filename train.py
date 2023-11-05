@@ -50,25 +50,6 @@ def train(args):
     if not os.path.isdir('models'):
         os.mkdir('models')
 
-    # make unique model folder
-    k, newpath = 2, 'models/' + savepath
-    while True:
-        if not os.path.isdir(newpath):
-            os.mkdir(newpath)
-            break
-        else:
-            newpath = 'models/' + savepath + "_" + str(k)
-            k += 1
-
-    # make weights folder
-    os.mkdir(os.path.join(newpath, 'weights'))
-
-    print(f"\n--> Created folder \"{newpath}\"")
-
-    # create logging file
-    with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
-        f.write('Time, TrainLoss, TrainAcc, ValidLoss, ValidAcc\n')
-
     # load data
     dataset = SP_500(folder)
     train, val = train_test_split(dataset, test_size=0.1, random_state=42)
@@ -89,6 +70,25 @@ def train(args):
     criterion = torch.nn.MSELoss(reduction='mean')
     optimiser = torch.optim.Adam(model.parameters(), lr=lr)
     best = 100
+
+    # make unique model folder
+    k, newpath = 2, 'models/' + savepath
+    while True:
+        if not os.path.isdir(newpath):
+            os.mkdir(newpath)
+            break
+        else:
+            newpath = 'models/' + savepath + "_" + str(k)
+            k += 1
+
+    # make weights folder
+    os.mkdir(os.path.join(newpath, 'weights'))
+
+    print(f"\nCreated folder \"{newpath}\"")
+
+    # create logging file
+    with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
+        f.write('Time, Train_Loss, Train_Accuracy, Valid_Loss, Valid_Accuracy\n')
 
     print("\nBeginning training...")
 
@@ -254,7 +254,7 @@ def parse_args():
     parser.add_argument('--hidden', type=int, default=32, help='Number of hidden layers.')
     parser.add_argument('--layers', type=int, default=2, help='Number of recurrent layers')
 
-    parser.add_argument('--data', type=str, default='daily_prices', help='Path to prices data')
+    parser.add_argument('--data', type=str, default='training_data', help='Path to prices data')
 
     parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs.')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
