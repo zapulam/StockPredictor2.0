@@ -51,27 +51,30 @@ def decompose(data, horizon, forecast=False):
     for col in data.columns:
         if col not in ['Date', 'DayOfWeek']:
             # detrend and deason column
-            result = sm.tsa.seasonal_decompose(data[col], model='additive', period=252, extrapolate_trend=25, two_sided=False)
-            decomp[col] = result.resid
+            decomp_result = sm.tsa.seasonal_decompose(data[col], model='additive', period=252, extrapolate_trend=25, two_sided=False)
 
-            # get day of week effects
-            effect = pd.DataFrame(decomp[col].mean() / decomp.groupby('DayOfWeek')[col].mean().rename("Effect")).reset_index()
-            decomp = pd.merge(decomp, effect, on='DayOfWeek', how='inner')
-            decomp[col] = decomp[col] * decomp['Effect']
-            decomp.drop(columns=['Effect'], inplace=True)
+            residuals = pd.DataFrame({col: decomp_result.resid, 'DayOfWeek': data['DayOfWeek']})
 
-            # create forecasts for next 252 days (1 trading year)
+            # remove day of week effects
+            grouped = residuals.groupby('DayOfWeek')
+            effect = residuals[col].mean() / grouped[col].mean()
+            effect_df = pd.DataFrame((effect).rename("Effect")).reset_index()
+            residuals = pd.merge(residuals, effect_df, on='DayOfWeek', how='inner')
+
+            decomp[col] = residuals[col] * residuals['Effect']
+
+            # creates trend and seasonal forecasts for next 252 days (1 trading year)
             if forecast:
                 # fit OLS for trend component
                 model = LinearRegression()
-                model.fit(np.array(data.index[-50:]).reshape(-1, 1), result.trend[-50:])
+                model.fit(np.array(data.index[-50:]).reshape(-1, 1), decomp_result.trend[-50:])
                 trends[col] = model.intercept_ + model.coef_ * range(data.index[-1], data.index[-1]+horizon)
 
                 # use moving average for seasonal component
-                seasonals[col] = result.seasonal[-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()[:horizon]
+                seasonals[col] = decomp_result.seasonal[-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()[:horizon]
 
                 # store effects for day of week
-                dow_effects[col] = effect['Effect']
+                dow_effects[col] = effect
 
     # drop date columns
     decomp.drop(columns=['Date', 'DayOfWeek'], inplace=True)
@@ -79,15 +82,15 @@ def decompose(data, horizon, forecast=False):
     # difference normalized data
     differenced = decomp.diff().iloc[1: , :]
 
+    # remove outliers
+    for col in differenced.columns:
+        z_scores = np.abs(stats.zscore(differenced[col]))
+        outliers = z_scores > 3
+        differenced[col][outliers] = differenced[col].mean()
+
     # normalize input data
     mins, maxs = differenced.min(), differenced.max() 
     normalized = (differenced-mins)/(maxs-mins)
-
-    # remove outliers
-    for col in normalized.columns:
-        z_scores = np.abs(stats.zscore(normalized[col]))
-        outliers = z_scores > 3
-        normalized[col][outliers] = normalized[col].mean()
 
     # return decomposed data and forecasts
     if forecast:
@@ -187,7 +190,7 @@ def forecast_pipeline(data, model, horizon):
 
     '''
     # decompose data
-    input, effects_forecasts = decompose(data, forecast=True)
+    input, effects_forecasts = decompose(data, horizon, forecast=True)
     
     # create residual forecast from model
     residual_forecast = create_forecast(input, model, horizon)
