@@ -241,7 +241,7 @@ def train(args):
         with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
             f.write(f"{round(end-start, 3)}, {round(avg_t_loss, 5)}, {round(avg_t_acc, 5)}, {round(avg_v_loss, 5)}, {round(avg_v_acc, 5)}\n")
         
-    cprint(f"\nFinished Training: ", "cyan", end="")
+    cprint(f"Finished Training: ", "cyan", end="")
     cprint("Models and metrics saved to: \"{newpath}\"", "green")
 
 
