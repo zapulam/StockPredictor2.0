@@ -60,8 +60,7 @@ def train(args):
     trainloader = DataLoader(dataset=train, batch_size=bs, shuffle=True, num_workers=workers)
     valloader = DataLoader(dataset=val, batch_size=bs, shuffle=True, num_workers=workers)
 
-    print('')
-    cprint("Checkpoint: ", "cyan", end='')
+    cprint("\nCheckpoint: ", "cyan", end='')
     cprint("Dataloaders created for training and validating.", "green")
 
     # create model
@@ -97,12 +96,10 @@ def train(args):
     with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
         f.write('Time, Train_Loss, Train_Accuracy, Valid_Loss, Valid_Accuracy\n')
 
-    print('')
-    cprint("Starting training...", "green")
+    cprint("\nStarting training...", "green")
 
     for epoch in range(epochs):
-        print('')
-        cprint(f"Epoch: ", "cyan", end='')
+        cprint(f"\nEpoch: ", "cyan", end='')
         cprint(f"{epoch + 1} ", "yellow", end='')
         cprint(f"of ", "cyan", end='')
         cprint(f"{epochs}", "yellow")
@@ -240,9 +237,9 @@ def train(args):
         # logging
         with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
             f.write(f"{round(end-start, 3)}, {round(avg_t_loss, 5)}, {round(avg_t_acc, 5)}, {round(avg_v_loss, 5)}, {round(avg_v_acc, 5)}\n")
-        
-    cprint(f"Finished Training: ", "cyan", end="")
-    cprint("Models and metrics saved to: \"{newpath}\"", "green")
+
+    cprint(f"Checkpoint: ", "cyan", end="")    
+    cprint(f"Finished training models and metrics saved to: \"{newpath}\"", "cyan", end="\n")
 
 
 def parse_args():

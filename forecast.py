@@ -95,9 +95,9 @@ def decompose(data, horizon, forecast=False):
     # return decomposed data and forecasts
     if forecast:
         forecasts = {'trend': trends, 'seasonal': seasonals, 'dow_effects': dow_effects}
-        return [normalized, forecasts]
+        return {'data': normalized, 'forecast': forecasts}
 
-    return [normalized]
+    return {'data': normalized}
 
 
 def create_forecast(data, model, horizon):
@@ -190,13 +190,20 @@ def forecast_pipeline(data, model, horizon):
 
     '''
     # decompose data
-    input, effects_forecasts = decompose(data, horizon, forecast=True)
+    result = decompose(data, horizon, forecast=True)
+
+    # input data
+    input = result['data']
+    input = torch.tensor(input.values)
+
+    # trend, seasonality, and dow effects
+    effect_forecasts = result['forecast']
     
     # create residual forecast from model
     residual_forecast = create_forecast(input, model, horizon)
     
     # compose residual forecasts and effects
-    composition = compose(data, residual_forecast, effects_forecasts, horizon)
+    composition = compose(data, residual_forecast, effect_forecasts, horizon)
     
     # get close data only
     close_forecast = composition.iloc[:, 4]

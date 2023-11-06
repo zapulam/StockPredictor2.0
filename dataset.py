@@ -73,7 +73,7 @@ class SP_500(Dataset):
         data = pd.read_csv(os.path.join(self.folder, file)).drop(columns=['Adj Close'])
         
         # decompose data
-        input = decompose(data, None, False)[0]
+        input = decompose(data, None, False)['data']
 
         # convert to tensor
         input = torch.tensor(input.values)
