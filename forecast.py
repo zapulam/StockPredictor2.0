@@ -100,7 +100,7 @@ def decompose(data, horizon, forecast=False):
     return {'data': normalized}
 
 
-def create_forecast(data, model, horizon):
+def create_forecast(data, model, horizon, device):
     '''
     Creates forecast sequentially
 
@@ -113,11 +113,19 @@ def create_forecast(data, model, horizon):
 
     '''
     # copy data
-    x = data
+    x = data.unsqueeze(0)
+
+    # predictions tensor
+    predictions = torch.ones(1,0,5)
+
+    if 'cuda' in device:
+        x = x.cuda()
+        predictions = predictions.cuda()
     
     for _ in range(horizon):
+    
         # predict one time step
-        pred = torch.unsqueeze(model(data), dim=1)
+        pred = torch.unsqueeze(model(x), dim=1)
         
         # append prediction
         predictions = torch.cat((predictions, pred), dim=1)
@@ -125,7 +133,7 @@ def create_forecast(data, model, horizon):
         # append predicition to input data for next forecast
         x = torch.cat((x, pred), dim=1)
         
-    return pred
+    return predictions
 
 
 def compose(data, forecast, effects, horizon):
@@ -143,9 +151,9 @@ def compose(data, forecast, effects, horizon):
     holidays = pd.read_csv(r'tools/NASDAQ_Holidays.csv')['Date']
 
     # get dates up to 1 year out
-    current_date = date.today()
-    next_year = current_date + timedelta(days=365)
-    date_range = pd.date_range(start=current_date, end=next_year, freq='D')
+    start_date = data['Date'].iloc[-1].date()
+    next_year = start_date + timedelta(days=365)
+    date_range = pd.date_range(start=start_date, end=next_year, freq='D')
 
     # create a DataFrame with a date column
     df = pd.DataFrame({'Date': date_range})
@@ -153,21 +161,25 @@ def compose(data, forecast, effects, horizon):
 
     df = df[df['DayOfWeek'].isin([0,1,2,3,4])]
     df = df[~df['Date'].isin(holidays)]
-    df.reset_index(drop=True).iloc[:horizon+1]
+    df = df.reset_index(drop=True).iloc[:horizon+1]
+    df = df.iloc[:horizon]
 
     # undo normalization
-    forecast = pd.DataFrame(forecast.numpy(), columns=['Open', 'High', 'Low', 'Close', 'Volume'])
     mins, maxs = data.min(), data.max() 
     forecast = (forecast * (maxs-mins)) + mins
+    print(forecast['Close'])
 
     # undo differencing
-    forecast = data.iloc[-1] + forecast.cumsum()
+    forecast = data[['Open', 'High', 'Low', 'Volume', 'Close']].iloc[-1] + forecast[['Open', 'High', 'Low', 'Volume', 'Close']].cumsum()
+    forecast = pd.concat([df, forecast], axis=1)
+    print(forecast['Close'])
 
     # multiply dow effect
-    for col in forecast.columms:
-        forecast['Effect'] = forecast['DayOfWeek'].map(effects['dow_effects'][col])
-        forecast[col] = forecast[col] / forecast['Effect']
-        forecast.drop(columns=['Effect'], inplace=True)
+    for col in forecast.columns:
+        if col not in ['Date', 'DayOfWeek']:
+            forecast['Effect'] = forecast['DayOfWeek'].map(effects['dow_effects'][col])
+            forecast[col] = forecast[col] / forecast['Effect']
+            forecast.drop(columns=['Effect'], inplace=True)
 
     # add seasonal effect
     forecast = forecast + effects['seasonal'].iloc[:horizon]
@@ -178,7 +190,7 @@ def compose(data, forecast, effects, horizon):
     return forecast
 
 
-def forecast_pipeline(data, model, horizon):
+def forecast_pipeline(data, model, horizon, device):
     '''
     Run all steps to create time series forecast 
 
@@ -194,14 +206,15 @@ def forecast_pipeline(data, model, horizon):
 
     # input data
     input = result['data']
-    input = torch.tensor(input.values)
+    input = torch.tensor(input.values).float()
 
     # trend, seasonality, and dow effects
     effect_forecasts = result['forecast']
     
     # create residual forecast from model
-    residual_forecast = create_forecast(input, model, horizon)
-    
+    residual_forecast = create_forecast(input, model, horizon, device)
+    residual_forecast = pd.DataFrame(residual_forecast.cpu().squeeze().detach().numpy(), columns=['Open', 'High', 'Low', 'Volume', 'Close'])
+
     # compose residual forecasts and effects
     composition = compose(data, residual_forecast, effect_forecasts, horizon)
     
