@@ -1,5 +1,5 @@
 '''
-Functions needed to create a forecast
+Functions needed to create a forecast for a time series
 By: Zachary Pulliam
 '''
 
@@ -77,7 +77,8 @@ def create_effects_forecast(decomposition, horizon):
         trend_forecast[col] = trend_forecast[col] + (decomposition['trend'][col].iloc[-1] - trend_forecast[col].iloc[0] + model.coef_)
 
         # add seasonal component
-        seasonality_forecast[col] = decomposition['seasonality'][col][-252:-(252-horizon)]
+        #seasonality_forecast[col] = decomposition['seasonality'][col][-252:-(252-horizon)]
+        seasonality_forecast[col] = decomposition['seasonality'][col].rolling(window=10, min_periods=1).mean()[-252:-(252-horizon)]
 
     return {'trend_forecast': trend_forecast, 'seasonality_forecast': seasonality_forecast.reset_index()}
 
@@ -133,10 +134,15 @@ def compose(decomposition, effects_forecast, rnn_forecast, horizon):
             forecast.drop(columns=['Effect'], inplace=True)
 
     # add seasonal effect
-    forecast = forecast + effects_forecast['seasonality_forecast']
+    comp = forecast + effects_forecast['seasonality_forecast']
 
     # add trend effect
-    forecast = forecast + effects_forecast['trend_forecast']
+    comp = forecast + effects_forecast['trend_forecast']
+
+    # reorder columns
+    comp['Date'] = forecast['Date']
+    forecast = comp.drop(columns=['DayOfWeek'])
+    forecast = forecast[['Date', 'Open', 'High', 'Low', 'Volume', 'Close']]
 
     return forecast
 
@@ -163,8 +169,5 @@ def forecast_pipeline(data, model, horizon, device):
 
     # compose residual forecasts and effects
     composition = compose(decomposition, effects_forecast, rnn_forecast, horizon)
-    
-    # get close data only
-    close_forecast = composition.iloc[:, 4]
     
     return decomposition, composition, effects_forecast, rnn_forecast
