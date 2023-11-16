@@ -35,6 +35,7 @@ def decompose(data):
     decomp = {'data': data}
     trend = pd.DataFrame()
     seasonality = pd.DataFrame()
+    residuals = pd.DataFrame()
     dow_effect = pd.DataFrame()
 
 
@@ -52,28 +53,29 @@ def decompose(data):
             trend_seasonal_decomp = sm.tsa.seasonal_decompose(data[col], model='additive', period=252, extrapolate_trend=25, two_sided=False)
             trend[col] = trend_seasonal_decomp.trend
             seasonality[col] = trend_seasonal_decomp.seasonal
+            residuals[col] = trend_seasonal_decomp.resid
 
-            residuals = pd.DataFrame({col: trend_seasonal_decomp.resid, 'DayOfWeek': data['DayOfWeek']})
+            resids = pd.DataFrame({col: trend_seasonal_decomp.resid, 'DayOfWeek': data['DayOfWeek']})
 
             # remove day of week effects
-            grouped = residuals.groupby('DayOfWeek')
-            effect = residuals[col].mean() / grouped[col].mean()
+            grouped = resids.groupby('DayOfWeek')
+            effect = resids[col].mean() / grouped[col].mean()
             dow_effect[col] = effect
 
             effect_df = pd.DataFrame((effect).rename("Effect")).reset_index()
-            residuals = pd.merge(residuals, effect_df, on='DayOfWeek', how='inner')
+            resids = pd.merge(resids, effect_df, on='DayOfWeek', how='left')
 
             # assign column to decomposed time series for forecasting
-            series[col] = residuals[col] * residuals['Effect']
+            series[col] = resids[col] * resids['Effect']
 
     # add effects to dict
-    decomp.update({'trend': trend, 'seasonality': seasonality, 'residuals': series, 'dow_effect': dow_effect})
+    decomp.update({'trend': trend, 'seasonality': seasonality, 'residuals': residuals, 'dow_effect': dow_effect})
 
     # drop date columns
     series.drop(columns=['Date', 'DayOfWeek'], inplace=True)
 
     # difference data
-    decomp.update({'final_row': series.iloc[-1]})
+    decomp.update({'final_row': pd.DataFrame(series.iloc[-1]).transpose().reset_index(drop=True)})
     series = series.diff().iloc[1: , :]
 
     # remove outliers

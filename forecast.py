@@ -16,92 +16,6 @@ from sklearn.linear_model import LinearRegression
 from decomposition import decompose
 
 
-def old(data, horizon, forecast=False):
-    '''
-    Decomposes time series for training and also forecasts effects if desired 
-
-    Inputs:
-        data (pd.DataFrame) - timeseries data for decomposition with n columns
-        forecast (bool) - if true will return forecasts for effects 
-
-    Outputs:
-        normalized (pd.DataFrame) - decomposed, differenced and normalized time series data
-        forecasts (dict)
-            - trend (pd.DataFrame) - trend forecast
-            - seasonal (pd.DataFrame) - seasonal forecast
-            - dow (pd.DataFrame) - effect for each day of week
-
-    '''
-    # set max horizon
-    if horizon and horizon > 252:
-        horizon = 252
-
-    # add day of week column
-    data['Date'] = pd.to_datetime(data['Date'])
-    data['DayOfWeek'] = data['Date'].dt.dayofweek
-    
-    # copy date columns
-    decomp = pd.DataFrame()
-    decomp[['Date', 'DayOfWeek']] = data[['Date', 'DayOfWeek']] 
-
-    # detrend, deseason, and remove day of week effect from all columns
-    if forecast:
-        trends = pd.DataFrame()
-        seasonals = pd.DataFrame()
-        dow_effects = pd.DataFrame()
-
-    for col in data.columns:
-        if col not in ['Date', 'DayOfWeek']:
-            # detrend and deason column
-            decomp_result = sm.tsa.seasonal_decompose(data[col], model='additive', period=252, extrapolate_trend=25, two_sided=False)
-
-            residuals = pd.DataFrame({col: decomp_result.resid, 'DayOfWeek': data['DayOfWeek']})
-
-            # remove day of week effects
-            grouped = residuals.groupby('DayOfWeek')
-            effect = residuals[col].mean() / grouped[col].mean()
-            effect_df = pd.DataFrame((effect).rename("Effect")).reset_index()
-            residuals = pd.merge(residuals, effect_df, on='DayOfWeek', how='inner')
-
-            decomp[col] = residuals[col] * residuals['Effect']
-
-            # creates trend and seasonal forecasts for next 252 days (1 trading year) for all features
-            if forecast:
-                # fit OLS for trend component
-                model = LinearRegression()
-                model.fit(np.array(data.index[-50:]).reshape(-1, 1), decomp_result.trend[-50:])
-                trends[col] = model.intercept_ + model.coef_ * range(data.index[-1], data.index[-1]+horizon)
-
-                # use moving average for seasonal component
-                seasonals[col] = decomp_result.seasonal[-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()[:horizon]
-
-                # store effects for day of week
-                dow_effects[col] = effect
-
-    # drop date columns
-    decomp.drop(columns=['Date', 'DayOfWeek'], inplace=True)
-
-    # difference normalized data
-    differenced = decomp.diff().iloc[1: , :]
-
-    # remove outliers
-    for col in differenced.columns:
-        z_scores = np.abs(stats.zscore(differenced[col]))
-        outliers = z_scores > 3
-        differenced[col][outliers] = differenced[col].mean()
-
-    # normalize input data
-    mins, maxs = differenced.min(), differenced.max() 
-    normalized = (differenced-mins)/(maxs-mins)
-
-    # return decomposed data and forecasts
-    if forecast:
-        forecasts = {'trend': trends, 'seasonal': seasonals, 'dow_effects': dow_effects}
-        return {'data': normalized, 'forecast': forecasts}
-
-    return {'data': normalized}
-
-
 def create_rnn_forecast(input, model, horizon, device):
     '''
     Creates forecast sequentially
@@ -154,16 +68,18 @@ def create_effects_forecast(decomposition, horizon):
     trend_forecast = pd.DataFrame()
     seasonality_forecast = pd.DataFrame()
 
+    # create forecast for each column
     for col in decomposition['trend'].columns:
         # fit OLS for trend component
         model = LinearRegression()
-        model.fit(np.array(decomposition['data'].index[-50:]).reshape(-1, 1), decomposition['trend'][col][-50:])
-        trend_forecast[col] = model.intercept_ + model.coef_ * range(decomposition['data'].index[-1], decomposition['data'].index[-1]+horizon)
+        model.fit(np.array(decomposition['data'].index[-100:]).reshape(-1, 1), decomposition['trend'][col][-100:])
+        trend_forecast[col] = model.intercept_ + model.coef_ * range(decomposition['data'].index[-1]+1, decomposition['data'].index[-1]+horizon+1)
+        trend_forecast[col] = trend_forecast[col] + (decomposition['trend'][col].iloc[-1] - trend_forecast[col].iloc[0] + model.coef_)
 
-        # use moving average for seasonal component
-        seasonality_forecast[col] = decomposition['seasonality'][col][-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()[:horizon]
+        # add seasonal component
+        seasonality_forecast[col] = decomposition['seasonality'][col][-252:-(252-horizon)]
 
-    return {'trend_forecast': trend_forecast, 'seasonality_forecast': seasonality_forecast}
+    return {'trend_forecast': trend_forecast, 'seasonality_forecast': seasonality_forecast.reset_index()}
 
 
 def compose(decomposition, effects_forecast, rnn_forecast, horizon):
@@ -197,10 +113,17 @@ def compose(decomposition, effects_forecast, rnn_forecast, horizon):
     # undo normalization
     forecast = (rnn_forecast * (decomposition['maximums'] - decomposition['minimums'])) + decomposition['minimums']
 
-    # undo differencing
-    forecast = decomposition['data'][['Open', 'High', 'Low', 'Volume', 'Close']].iloc[-1] + forecast[['Open', 'High', 'Low', 'Volume', 'Close']].cumsum()
+    # undo differencing, reconstructing the values at each time step for multiple columns
+    reconstructed_values = {}
+    for col in decomposition['final_row'].columns:
+        initial_value = decomposition['final_row'][col][0]  # Initial value at time step 0
+        
+        # Calculate cumulative sum of differences and add it to the initial value
+        reconstructed_values[col] = [initial_value] + (forecast[col].cumsum() + initial_value).tolist()
+
+    # Creating a new DataFrame with reconstructed values for multiple columns
+    forecast = pd.DataFrame(reconstructed_values).iloc[1:].reset_index(drop=True)
     forecast = pd.concat([df, forecast], axis=1)
-    print(forecast['Close'])
 
     # multiply dow effect
     for col in forecast.columns:
@@ -211,10 +134,12 @@ def compose(decomposition, effects_forecast, rnn_forecast, horizon):
     print(forecast['Close'])
 
     # add seasonal effect
-    forecast = forecast + effects_forecast['trend_forecast']
+    forecast = forecast + effects_forecast['seasonality_forecast']
+    print(forecast['Close'])
 
     # add trend effect
-    forecast = forecast + effects_forecast['seasonality_forecast']
+    forecast = forecast + effects_forecast['trend_forecast']
+    print(forecast['Close'])
 
     return forecast
 
@@ -245,4 +170,4 @@ def forecast_pipeline(data, model, horizon, device):
     # get close data only
     close_forecast = composition.iloc[:, 4]
     
-    return close_forecast
+    return decomposition, composition, effects_forecast, rnn_forecast
