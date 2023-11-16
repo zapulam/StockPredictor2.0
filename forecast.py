@@ -72,7 +72,7 @@ def create_effects_forecast(decomposition, horizon):
     for col in decomposition['trend'].columns:
         # fit OLS for trend component
         model = LinearRegression()
-        model.fit(np.array(decomposition['data'].index[-100:]).reshape(-1, 1), decomposition['trend'][col][-100:])
+        model.fit(np.array(decomposition['data'].index[-20:]).reshape(-1, 1), decomposition['trend'][col][-20:])
         trend_forecast[col] = model.intercept_ + model.coef_ * range(decomposition['data'].index[-1]+1, decomposition['data'].index[-1]+horizon+1)
         trend_forecast[col] = trend_forecast[col] + (decomposition['trend'][col].iloc[-1] - trend_forecast[col].iloc[0] + model.coef_)
 
@@ -131,15 +131,12 @@ def compose(decomposition, effects_forecast, rnn_forecast, horizon):
             forecast['Effect'] = forecast['DayOfWeek'].map(decomposition['dow_effect'][col])
             forecast[col] = forecast[col] / forecast['Effect']
             forecast.drop(columns=['Effect'], inplace=True)
-    print(forecast['Close'])
 
     # add seasonal effect
     forecast = forecast + effects_forecast['seasonality_forecast']
-    print(forecast['Close'])
 
     # add trend effect
     forecast = forecast + effects_forecast['trend_forecast']
-    print(forecast['Close'])
 
     return forecast
 
