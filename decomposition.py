@@ -32,10 +32,11 @@ def decompose(data):
     '''
 
     # create decomposition dictionary
-    decomp = dict()
+    decomp = {'data': data}
     trend = pd.DataFrame()
     seasonality = pd.DataFrame()
     dow_effect = pd.DataFrame()
+
 
     # add day of week column
     data['Date'] = pd.to_datetime(data['Date'])
@@ -66,13 +67,13 @@ def decompose(data):
             series[col] = residuals[col] * residuals['Effect']
 
     # add effects to dict
-    decomp.update({'residuals': series, 'trend': trend, 'seasonality': seasonality, 'dow_effect': dow_effect})
+    decomp.update({'trend': trend, 'seasonality': seasonality, 'residuals': series, 'dow_effect': dow_effect})
 
     # drop date columns
     series.drop(columns=['Date', 'DayOfWeek'], inplace=True)
 
-    # difference normalized data
-    decomp.update({'row_1': series.iloc[0]})
+    # difference data
+    decomp.update({'final_row': series.iloc[-1]})
     series = series.diff().iloc[1: , :]
 
     # remove outliers
@@ -86,6 +87,6 @@ def decompose(data):
     decomp.update({'minimums': mins, 'maximums': maxs})
 
     series = (series-mins)/(maxs-mins)
-    decomp.update({'sereis': series})
+    decomp.update({'input': series})
 
     return decomp

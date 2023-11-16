@@ -13,8 +13,10 @@ from datetime import date, timedelta
 from scipy import stats
 from sklearn.linear_model import LinearRegression
 
+from decomposition import decompose
 
-def decompose(data, horizon, forecast=False):
+
+def old(data, horizon, forecast=False):
     '''
     Decomposes time series for training and also forecasts effects if desired 
 
@@ -100,7 +102,7 @@ def decompose(data, horizon, forecast=False):
     return {'data': normalized}
 
 
-def create_forecast(data, model, horizon, device):
+def create_rnn_forecast(input, model, horizon, device):
     '''
     Creates forecast sequentially
 
@@ -113,7 +115,7 @@ def create_forecast(data, model, horizon, device):
 
     '''
     # copy data
-    x = data.unsqueeze(0)
+    x = input.unsqueeze(0)
 
     # predictions tensor
     predictions = torch.ones(1,0,5)
@@ -133,10 +135,38 @@ def create_forecast(data, model, horizon, device):
         # append predicition to input data for next forecast
         x = torch.cat((x, pred), dim=1)
         
-    return predictions
+    return pd.DataFrame(predictions.cpu().squeeze().detach().numpy(), columns=['Open', 'High', 'Low', 'Volume', 'Close'])
 
 
-def compose(data, forecast, effects, horizon):
+def create_effects_forecast(decomposition, horizon):
+    '''
+    Creates forecast sequentially
+
+    Inputs:
+        data (pd.DataFrame) - timeseries data to forecast
+        model (LSTM) - forecasting model 
+
+    Outputs:
+        pred (pd.DataFrame) - predictions for all features
+
+    '''
+    # create dataframes to store effects forecasts
+    trend_forecast = pd.DataFrame()
+    seasonality_forecast = pd.DataFrame()
+
+    for col in decomposition['trend'].columns:
+        # fit OLS for trend component
+        model = LinearRegression()
+        model.fit(np.array(decomposition['data'].index[-50:]).reshape(-1, 1), decomposition['trend'][col][-50:])
+        trend_forecast[col] = model.intercept_ + model.coef_ * range(decomposition['data'].index[-1], decomposition['data'].index[-1]+horizon)
+
+        # use moving average for seasonal component
+        seasonality_forecast[col] = decomposition['seasonality'][col][-252:].reset_index(drop=True).rolling(14, min_periods=1).mean()[:horizon]
+
+    return {'trend_forecast': trend_forecast, 'seasonality_forecast': seasonality_forecast}
+
+
+def compose(decomposition, effects_forecast, rnn_forecast, horizon):
     '''
     Composes residual forecast and effects
 
@@ -151,11 +181,11 @@ def compose(data, forecast, effects, horizon):
     holidays = pd.read_csv(r'tools/NASDAQ_Holidays.csv')['Date']
 
     # get dates up to 1 year out
-    start_date = data['Date'].iloc[-1].date()
+    start_date = decomposition['data']['Date'].iloc[-1].date()
     next_year = start_date + timedelta(days=365)
     date_range = pd.date_range(start=start_date, end=next_year, freq='D')
 
-    # create a DataFrame with a date column
+    # create a DataFrame with a date and dow column
     df = pd.DataFrame({'Date': date_range})
     df['DayOfWeek'] = df['Date'].dt.dayofweek
 
@@ -165,27 +195,26 @@ def compose(data, forecast, effects, horizon):
     df = df.iloc[:horizon]
 
     # undo normalization
-    mins, maxs = data.min(), data.max() 
-    forecast = (forecast * (maxs-mins)) + mins
-    print(forecast['Close'])
+    forecast = (rnn_forecast * (decomposition['maximums'] - decomposition['minimums'])) + decomposition['minimums']
 
     # undo differencing
-    forecast = data[['Open', 'High', 'Low', 'Volume', 'Close']].iloc[-1] + forecast[['Open', 'High', 'Low', 'Volume', 'Close']].cumsum()
+    forecast = decomposition['data'][['Open', 'High', 'Low', 'Volume', 'Close']].iloc[-1] + forecast[['Open', 'High', 'Low', 'Volume', 'Close']].cumsum()
     forecast = pd.concat([df, forecast], axis=1)
     print(forecast['Close'])
 
     # multiply dow effect
     for col in forecast.columns:
         if col not in ['Date', 'DayOfWeek']:
-            forecast['Effect'] = forecast['DayOfWeek'].map(effects['dow_effects'][col])
+            forecast['Effect'] = forecast['DayOfWeek'].map(decomposition['dow_effect'][col])
             forecast[col] = forecast[col] / forecast['Effect']
             forecast.drop(columns=['Effect'], inplace=True)
+    print(forecast['Close'])
 
     # add seasonal effect
-    forecast = forecast + effects['seasonal'].iloc[:horizon]
+    forecast = forecast + effects_forecast['trend_forecast']
 
     # add trend effect
-    forecast = forecast + effects['trend'].iloc[:horizon]
+    forecast = forecast + effects_forecast['seasonality_forecast']
 
     return forecast
 
@@ -202,21 +231,16 @@ def forecast_pipeline(data, model, horizon, device):
 
     '''
     # decompose data
-    result = decompose(data, horizon, forecast=True)
+    decomposition = decompose(data)
 
-    # input data
-    input = result['data']
-    input = torch.tensor(input.values).float()
-
-    # trend, seasonality, and dow effects
-    effect_forecasts = result['forecast']
+    # forecast trend and seasonality
+    effects_forecast = create_effects_forecast(decomposition, horizon)
     
     # create residual forecast from model
-    residual_forecast = create_forecast(input, model, horizon, device)
-    residual_forecast = pd.DataFrame(residual_forecast.cpu().squeeze().detach().numpy(), columns=['Open', 'High', 'Low', 'Volume', 'Close'])
+    rnn_forecast = create_rnn_forecast(torch.tensor(decomposition['input'].values).float(), model, horizon, device)
 
     # compose residual forecasts and effects
-    composition = compose(data, residual_forecast, effect_forecasts, horizon)
+    composition = compose(decomposition, effects_forecast, rnn_forecast, horizon)
     
     # get close data only
     close_forecast = composition.iloc[:, 4]
