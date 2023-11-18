@@ -35,8 +35,7 @@ def decompose(data):
 
 
     # add day of week column
-    date = data.copy()['Date']
-    data['Date'] = pd.to_datetime(date)
+    data['Date'] = pd.to_datetime(data['Date'])
     data['DayOfWeek'] = data['Date'].dt.dayofweek
     
     # copy date columns
