@@ -20,14 +20,9 @@ def decompose(data):
 
     Inputs:
         data (pd.DataFrame) - timeseries data for decomposition with n columns
-        forecast (bool) - if true will return forecasts for effects 
 
     Outputs:
-        normalized (pd.DataFrame) - decomposed, differenced and normalized time series data
-        forecasts (dict)
-            - trend (pd.DataFrame) - trend forecast
-            - seasonal (pd.DataFrame) - seasonal forecast
-            - dow (pd.DataFrame) - effect for each day of week
+        decomp (pd.DataFrame) - decomposed time series data
 
     '''
 
@@ -40,7 +35,8 @@ def decompose(data):
 
 
     # add day of week column
-    data['Date'] = pd.to_datetime(data['Date'])
+    date = data.copy()['Date']
+    data['Date'] = pd.to_datetime(date)
     data['DayOfWeek'] = data['Date'].dt.dayofweek
     
     # copy date columns

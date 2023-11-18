@@ -10,7 +10,7 @@ import pandas as pd
 
 from torch.utils.data import Dataset
 
-from forecast import decompose
+from decomposition import decompose
 
 
 class SP_500(Dataset):
@@ -73,7 +73,7 @@ class SP_500(Dataset):
         data = pd.read_csv(os.path.join(self.folder, file)).drop(columns=['Adj Close'])
         
         # decompose data
-        input = decompose(data, None, False)['data']
+        input = decompose(data)['input']
 
         # convert to tensor
         input = torch.tensor(input.values)
