@@ -11,21 +11,19 @@ import datetime as dt
 
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from ..utils import format_yahoo_datetimes
 
 
 def download_data(dir, info):
-    '''
-    Download historic data for all S&P 500 stocks
-
-    Inputs:
-        dir (str) - directory to save historic data
-        info (str) - path to S&P_500 info file
-
-    '''
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/56.0.2924.76 Safari/537.36'} # this is chrome, you can set whatever browser you like
 
-    period1, period2 = format_yahoo_datetimes()
+    now = dt.datetime.now()
+
+    a = dt.datetime(1970,1,1,23,59,59)
+    b = dt.datetime(now.year, now.month, now.day, 23, 59, 59)
+    c = b - relativedelta(years=5)
+
+    period1 = str(int((c-a).total_seconds()))   # total seconds from today since Jan. 1, 1970 subracting 5 years
+    period2 = str(int((b-a).total_seconds()))   # total seconds from today since Jan. 1, 1970
 
     url = 'https://query1.finance.yahoo.com/v7/finance/download/{stock}?period1={period1}&period2={period2}&interval=1d&events=history&includeAdjustedClose=true'
 
@@ -47,20 +45,16 @@ def download_data(dir, info):
 
 def create_data_folder(args):
     '''
-    Creates folder for/and downloads daily historical data for all S&P 500 stocks
+    Downloads daily historical data for all S&P 500 stocks, should be ran with utils as cwd
     
     Inputs:
-        args (dict) - cmd line aruments
-
+        args (dict) - cmd line aruments for training
+            - info (str) - path to S&P500-Info.csv
     '''
     info, folder = args.info, args.folder
 
-    dir = os.getcwd()
-    dir = dir.split(os.sep)
-    dir = os.path.join('C:\\', *dir[1:-1], folder)
-    os.makedirs(dir, exist_ok=True)
-
-    download_data(dir, info)
+    os.makedirs(folder, exist_ok=True)
+    download_data(folder, info)
 
     sys.stdout.write('\rAll stock historical price files saved to daily_prices')
     
@@ -70,10 +64,11 @@ def parse_args():
     Saves cmd line arguments for training
     
     Outputs:
-        args (dict) - cmd line aruments
+        args (dict) - cmd line aruments for training
+            - info (str) - path to S&P500-Info.csv
     '''
     parser = argparse.ArgumentParser()
-    parser.add_argument('--info', type=str, default='S&P500-Info.csv', help='location of S&P500-Info.csv')
+    parser.add_argument('--info', type=str, default='tools/S&P500-Info.csv', help='location of S&P500-Info.csv')
     parser.add_argument('--folder', type=str, default='daily_prices', help='folder to save data')
     args = parser.parse_args()
     return args
