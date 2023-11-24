@@ -1,0 +1,2 @@
+Issues:
+- Currently RNN just predicts 0.5 (mean)
