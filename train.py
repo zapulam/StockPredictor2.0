@@ -267,8 +267,8 @@ def parse_args():
             - savepath (str) - Path to save models.
     '''
     parser = argparse.ArgumentParser()
-    parser.add_argument('--hidden', type=int, default=32, help='Number of hidden layers.')
-    parser.add_argument('--layers', type=int, default=2, help='Number of recurrent layers')
+    parser.add_argument('--hidden', type=int, default=64, help='Number of hidden layers.')
+    parser.add_argument('--layers', type=int, default=4, help='Number of recurrent layers')
 
     parser.add_argument('--data', type=str, default='training_data', help='Path to prices data')
 
@@ -279,7 +279,7 @@ def parse_args():
 
     parser.add_argument('--lookback', type=int, default=252, help='Minimum lookback range (252 = 1 year of data)')
     parser.add_argument('--horizon', type=int, default=5, help='Number of days to forecast for recursively.')
-    parser.add_argument('--stride', type=int, default=2, help='Stride to walk through data for training (stride = 1 trains on each day).')
+    parser.add_argument('--stride', type=int, default=8, help='Stride to walk through data for training (stride = 1 trains on each day).')
 
     parser.add_argument('--device', type=str, default='cuda:0', help='Device to use for trainng; cuda:n or cpu.')
 
