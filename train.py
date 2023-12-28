@@ -24,7 +24,7 @@ def train(args):
     Trains RNN on S&P 500 daily stock prices data to predict future close price and saves model to specified path
 
     Inputs:
-        args (dict) - CMD line aruments for training
+        args (dict) - CMD line arguments for training
             - hidden (int) - Number of hidden layers.
             - layers (int) - Number of recurrent layers.
             
@@ -32,214 +32,161 @@ def train(args):
             
             - epochs (int) - Number of training epochs.
             - lr (float) - Learning rate.
-            - bs (int) - Batch size.
             - workers (int) - Number of worker nodes.
             
-            - lookback (int) - Minimum lookback range (252 = 1 year of data)
+            - lags (int) - Minimum lags range (252 = 1 year of data)
             - horizon (int) - Number of days to forecast for recursively.
             - stride (int) - Stride to walk through data for training (stride = 1 trains on each day).
             
-            - device (str) - Device to use for trainng; cuda:n or cpu.
+            - device (str) - Device to use for training; cuda:n or cpu.
             
             - savepath (str) - Path to save models.
     '''
     hidden_dim, num_layers, folder, epochs, \
-        lr, bs, workers, lookback, stride, horizon, device, savepath = \
+        lr, workers, lags, stride, horizon, device, savepath = \
         args.hidden, args.layers, args.data, args.epochs, \
-        args.lr, args.bs, args.workers, args.lookback, args.stride, args.horizon, args.device, args.savepath
+        args.lr, args.workers, args.lags, args.stride, args.horizon, args.device, args.savepath
+    
+    cprint("\nSTOCKPREDICTOR2.0 TRAINING MANY MODELS SCRIPT", "cyan")
 
     # make models folder
     if not os.path.isdir('models'):
         os.mkdir('models')
+        cprint("\nCheckpoint: ", "cyan", end='')
+        cprint("MODELS folder created.", "green")
+    else:
+        cprint("\nCheckpoint: ", "cyan", end='')
+        cprint(f"MODELS folder exists.", "green")
 
     # load data
-    dataset = SP_500(folder)
-    train, val = train_test_split(dataset, test_size=0.1, random_state=42)
-
-    # create dataloaders
-    trainloader = DataLoader(dataset=train, batch_size=bs, shuffle=True, num_workers=workers)
-    valloader = DataLoader(dataset=val, batch_size=bs, shuffle=True, num_workers=workers)
-
-    cprint("\nCheckpoint: ", "cyan", end='')
-    cprint("Dataloaders created for training and validating.", "green")
-
-    # create model
-    model = LSTM(input_dim=5, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=5)
-    model = model.to(device)
-
+    dataset = SP_500(folder)    
     cprint("Checkpoint: ", "cyan", end='')
-    cprint(f"Model created and sent to {device}.", "green")
-
-    # define loss and optimizer
-    criterion = torch.nn.MSELoss(reduction='mean')
-    optimiser = torch.optim.Adam(model.parameters(), lr=lr)
-    best = 100
+    cprint("S&P500 dataset created for training.", "green")
 
     # make unique model folder
-    k, newpath = 2, 'models/' + savepath
+    k, path = 2, os.path.join('models', savepath)
     while True:
-        if not os.path.isdir(newpath):
-            os.mkdir(newpath)
+        if not os.path.isdir(path):
+            os.mkdir(path)
             break
         else:
-            newpath = 'models/' + savepath + "_" + str(k)
+            path = os.path.join('models', savepath + "_" + str(k))
             k += 1
-
-    # make weights folder
-    os.mkdir(os.path.join(newpath, 'weights'))
-
-
     cprint("Checkpoint: ", "cyan", end='')
-    cprint(f"Checkpoint: Created folder \"{newpath}\".", "green")
+    cprint(f"{path.upper()} created to store models and logs for this run.", "green")
 
-    # create logging file
-    with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
-        f.write('Time, Train_Loss, Train_Accuracy, Valid_Loss, Valid_Accuracy\n')
+    # check if cuda is available
+    if (torch.cuda.is_available()) and ('cuda' in device):
+        cprint("Checkpoint: ", "cyan", end='')
+        cprint(f"{device.upper()} is found.", "green")
+    elif (not torch.cuda.is_available()) and ('cuda' in device):
+        cprint("Checkpoint: ", "cyan", end='')
+        cprint(f"{device.upper()} is not found, device set to CPU.", "green")
+        device = 'cpu'
+    else:
+        cprint("Checkpoint: ", "cyan", end='')
+        cprint(f"Device set to CPU.", "green")
 
-    cprint("\nStarting training...", "green")
+    cprint("\nStarting training...\n", "green")
 
-    for epoch in range(epochs):
-        cprint(f"\nEpoch: ", "cyan", end='')
-        cprint(f"{epoch + 1} ", "yellow", end='')
-        cprint(f"of ", "cyan", end='')
-        cprint(f"{epochs}", "yellow")
+    for idx, stock in enumerate(tqdm(dataset.data, desc='Training Many Models', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
+        # create folder for timeseries unique model
+        uniq_path = os.path.join(path, stock.split('.', 1)[0])
+        os.mkdir(uniq_path)
+        
+        # create logging file
+        with open(os.path.join(uniq_path, 'logs.txt'), 'a') as f:
+            f.write('Time, Avg_Loss, Avg_Accuracy\n')
 
-        start = time.time()
+        # make weights folder
+        os.mkdir(os.path.join(uniq_path, 'weights'))
 
-        # initialize train and valid loss and accuracy logging lost
-        t_loss, t_acc = [], [] 
-        v_loss, v_acc = [], []
+        # load timeseries
+        timeseries = dataset.__getitem__(idx)
+        if 'cuda' in device:
+            timeseries = timeseries.cuda()
 
-        # Training
-        for _, data in enumerate(tqdm(trainloader, desc='Training', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
+        # create model
+        model = LSTM(input_dim=5, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=5)
+        model = model.to(device)
 
-            if 'cuda' in device:
-                data = data.cuda()
+        # define loss and optimizer
+        criterion = torch.nn.MSELoss(reduction='mean')
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        best = 100
 
-            # initialize seqs list of length len(series)-lookback with
-            #   X of size (bs, n, num_feats) and Y of size (bs, 1, numfeats)
-            seqs = []
+        for _ in range(epochs):
+            # logging
+            start = time.time()
 
-            # create seqs
-            for i in range(lookback, data.shape[1]-horizon, stride):
-                seqs.append([data[:, 0:i, :], data[:, i:i+horizon, :]])
+            # initialize train and valid loss and accuracy logging lost
+            loss, acc = [], []
+
+            # initialize X and Y list of length len(timeseries)-lags with
+            X = [] # of size (n, num_feats)
+            Y = [] # of size (horizon, 5)
+
+            # create X and Y
+            for i in range(lags, timeseries.shape[0]-horizon, stride):
+                X.append(timeseries[0:i, :])
+                Y.append(timeseries[i:i+horizon, :])
 
             # train model for each sequence
-            for _, seq in enumerate(seqs):
-                # batch size
-                size = seq[0].size()[0]
+            for i, x in enumerate(X):
 
-                predictions = torch.ones(size,0,5)
+                predictions = torch.empty(0,5)
                 if 'cuda' in device:
                     predictions = predictions.cuda()
 
-                # features and target
-                x = seq[0].float()
-                y = seq[1].float()
+                # train and validation
+                x = x.float()
+                y = Y[i].float()
 
                 for _ in range(horizon):
                     # predict one time step
-                    pred = torch.unsqueeze(model(x), dim=1)
+                    prediction = torch.unsqueeze(model(x), dim=0)
                     
                     # append prediction
-                    predictions = torch.cat((predictions, pred), dim=1)
+                    predictions = torch.cat((predictions, prediction), dim=0)
 
-                    # append predicition to input data for next forecast
-                    x = torch.cat((x, pred), dim=1)   
+                    # append prediction to input data for next forecast
+                    x = torch.cat((x, prediction), dim=0)   
 
                 # calculate loss
-                loss = criterion(predictions, y)   
-                t_loss.append(loss.item())
+                l = criterion(predictions, y)   
+                loss.append(l.item())
                 
-                # checking accuracy of close on last day... horizon days out
-                t_acc.extend((1 - torch.abs(predictions[:, -1, 4] - seq[1][:, -1, 4])).tolist())
+                # checking accuracy of close on last day... horizon days 
+                # CHANGE TO TRACK EACH DAY INDIVIDUALLY
+                #acc.extend([1 - torch.abs(predictions[n, 4] - y[n, 4]).tolist() for n in range(len(horizon))])
+                acc.append((1 - torch.abs(predictions[-1, 4] - y[-1, 4]).item()))
 
                 # update model parameters
-                optimiser.zero_grad()   
-                loss.backward()         
-                optimiser.step()        
+                optimizer.zero_grad()   
+                l.backward()         
+                optimizer.step()        
 
-        # validation
-        with torch.no_grad():
-            for _, data in enumerate(tqdm(valloader, desc='Validating', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
+            # logging
+            end = time.time()
 
-                if 'cuda' in device:
-                    data = data.cuda()
+            # save most recent model
+            torch.save([model.kwargs, model.state_dict()], os.path.join(uniq_path, "weights\last.pth"))
 
-                # initialize seqs list of length len(series)-lookback with
-                #   X of size (bs, n, num_feats) and Y of size (bs, 1, numfeats)
-                seqs = []
+            # calculate average metrics
+            avg_loss = sum(loss) / len(loss)
+            avg_acc = sum(acc) / len(acc)
 
-                # Create seqs
-                for i in range(lookback, data.shape[1]-horizon, stride):
-                    seqs.append([data[:, 0:i, :], data[:, i:i+horizon, :]])
+            # save best model
+            if avg_loss < best:
+                best = avg_loss
+                torch.save([model.kwargs, model.state_dict()], os.path.join(uniq_path, "weights\\best.pth"))
 
-                # train model for each sequence
-                for _, seq in enumerate(seqs):
-                    # batch size
-                    size = seq[0].size()[0]
+            # logging
+            with open(os.path.join(uniq_path, 'logs.txt'), 'a') as f:
+                f.write(f"{round(end-start, 3)}, {round(avg_loss, 5)}, {round(avg_acc, 5)}\n")
 
-                    predictions = torch.ones(size,0,5)
-                    if 'cuda' in device:
-                        predictions = predictions.cuda()
-
-                    # features and target
-                    x = seq[0].float()
-                    y = seq[1].float()
-
-                    for _ in range(horizon):
-                        # predict one time step
-                        pred = torch.unsqueeze(model(x), dim=1)
-                        
-                        # append prediction
-                        predictions = torch.cat((predictions, pred), dim=1)
-
-                        # append predicition to input data for next forecast
-                        x = torch.cat((x, pred), dim=1)  
-
-                    # calculate loss
-                    loss = criterion(predictions, y)   
-
-                    # checking accuracy of close on last day... horizon days out
-                    v_loss.append(loss.item())
-                    v_acc.extend((1 - torch.abs(predictions[:, -1, 4] - seq[1][:, -1, 4])).tolist())
-
-        end = time.time()
-
-        # save most recent model
-        torch.save([model.kwargs, model.state_dict()], os.path.join(newpath, "weights\last.pth"))
-
-        # calculate average losses
-        avg_t_loss = sum(t_loss) / len(t_loss)
-        avg_v_loss = sum(v_loss) / len(v_loss)
-
-        # calculate average accuracies
-        avg_t_acc = sum(t_acc) / len(t_acc)
-        avg_v_acc = sum(v_acc) / len(v_acc)
-
-        # save best model
-        if avg_v_loss < best:
-            best = avg_v_loss
-            torch.save([model.kwargs, model.state_dict()], os.path.join(newpath, "weights\\best.pth"))
-
-        # print logging
-        cprint(f"Time: ", "yellow", end="")
-        cprint(f"{round(end-start, 3)}   ", "cyan", end="")
-        cprint(f"Train Loss: ", "yellow", end="")
-        cprint(f"{round(avg_t_loss, 5)}   ", "cyan", end="")
-        cprint(f"Train Acc: ", "yellow", end="")
-        cprint(f"{round(avg_t_acc, 5)}   ", "cyan", end="")
-        cprint(f"Valid Loss: ", "yellow", end="")
-        cprint(f"{round(avg_v_loss, 5)}   ", "cyan", end="")
-        cprint(f"Valid Acc: ", "yellow", end="")
-        cprint(f"{round(avg_v_acc, 5)}   ", "cyan", end="\n")
-
-        # logging
-        with open(os.path.join(newpath, 'logs.txt'), 'a') as f:
-            f.write(f"{round(end-start, 3)}, {round(avg_t_loss, 5)}, {round(avg_t_acc, 5)}, {round(avg_v_loss, 5)}, {round(avg_v_acc, 5)}\n")
-
-    cprint(f"Checkpoint: ", "cyan", end="")    
-    cprint(f"Finished training models and metrics saved to: \"{newpath}\"", "cyan", end="\n")
+    cprint(f"\n\nCheckpoint: ", "cyan", end="")    
+    cprint(f"Finished training; models and logging saved to: {path.upper()}\n", "cyan", end="\n")
 
 
 def parse_args():
@@ -247,7 +194,7 @@ def parse_args():
     Saves cmd line arguments for training
     
     Outputs:
-        args (dict) - CMD line aruments for training
+        args (dict) - CMD line arguments for training
             - hidden (int) - Number of hidden layers.
             - layers (int) - Number of recurrent layers.
             
@@ -255,33 +202,31 @@ def parse_args():
             
             - epochs (int) - Number of training epochs.
             - lr (float) - Learning rate.
-            - bs (int) - Batch size.
             - workers (int) - Number of worker nodes.
             
-            - lookback (int) - Minimum lookback range (252 = 1 year of data)
+            - lags (int) - Minimum lags range (252 = 1 year of data)
             - horizon (int) - Number of days to forecast for recursively.
             - stride (int) - Stride to walk through data for training (stride = 1 trains on each day).
             
-            - device (str) - Device to use for trainng; cuda:n or cpu.
+            - device (str) - Device to use for training; cuda:n or cpu.
             
             - savepath (str) - Path to save models.
     '''
     parser = argparse.ArgumentParser()
-    parser.add_argument('--hidden', type=int, default=64, help='Number of hidden layers.')
-    parser.add_argument('--layers', type=int, default=4, help='Number of recurrent layers')
+    parser.add_argument('--hidden', type=int, default=4, help='Number of hidden layers.')
+    parser.add_argument('--layers', type=int, default=2, help='Number of recurrent layers')
 
     parser.add_argument('--data', type=str, default='training_data', help='Path to prices data')
 
-    parser.add_argument('--epochs', type=int, default=5, help='Number of training epochs.')
+    parser.add_argument('--epochs', type=int, default=3, help='Number of training epochs.')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
-    parser.add_argument('--bs', type=int, default=4, help='Batch size')
     parser.add_argument('--workers', type=int, default=0, help='Number of workers')
 
-    parser.add_argument('--lookback', type=int, default=252, help='Minimum lookback range (252 = 1 year of data)')
+    parser.add_argument('--lags', type=int, default=252, help='Minimum lags range (252 = 1 year of data)')
     parser.add_argument('--horizon', type=int, default=5, help='Number of days to forecast for recursively.')
-    parser.add_argument('--stride', type=int, default=8, help='Stride to walk through data for training (stride = 1 trains on each day).')
+    parser.add_argument('--stride', type=int, default=32, help='Stride to walk through data for training (stride = 1 trains on each day).')
 
-    parser.add_argument('--device', type=str, default='cuda:0', help='Device to use for trainng; cuda:n or cpu.')
+    parser.add_argument('--device', type=str, default='cuda:0', help='Device to use for training; cuda:n or cpu.')
 
     parser.add_argument('--savepath', type=str, default='rnn', help='Path to save models.')
 
