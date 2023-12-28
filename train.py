@@ -16,7 +16,7 @@ from rnn import LSTM
 from dataset import SP_500
 
 
-def train(args):
+def train(control_file):
     '''
     Trains a RNN on each available S&P 500 stock data to forecast daily close price.
 
@@ -38,7 +38,7 @@ def train(args):
             
             - save_path (str) - Path to save models.
     '''
-    
+
     cprint("\nSTOCKPREDICTOR2.0 TRAINING MANY MODELS SCRIPT", "cyan")
 
     # unload arguments
