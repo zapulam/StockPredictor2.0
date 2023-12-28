@@ -4,27 +4,24 @@ By: Zachary Pulliam
 '''
 
 import os
-import sys
+import json
 import time
 import torch
 import argparse
 
 from tqdm import tqdm
-from termcolor import colored, cprint
-from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
+from termcolor import cprint
 
 from rnn import LSTM
 from dataset import SP_500
 
 
-
 def train(args):
     '''
-    Trains RNN on S&P 500 daily stock prices data to predict future close price and saves model to specified path
+    Trains a RNN on each available S&P 500 stock data to forecast daily close price.
 
     Inputs:
-        args (dict) - CMD line arguments for training
+        control_file (dict) - Arguments for training.
             - hidden (int) - Number of hidden layers.
             - layers (int) - Number of recurrent layers.
             
@@ -32,7 +29,6 @@ def train(args):
             
             - epochs (int) - Number of training epochs.
             - lr (float) - Learning rate.
-            - workers (int) - Number of worker nodes.
             
             - lags (int) - Minimum lags range (252 = 1 year of data)
             - horizon (int) - Number of days to forecast for recursively.
@@ -40,14 +36,27 @@ def train(args):
             
             - device (str) - Device to use for training; cuda:n or cpu.
             
-            - savepath (str) - Path to save models.
+            - save_path (str) - Path to save models.
     '''
-    hidden_dim, num_layers, folder, epochs, \
-        lr, workers, lags, stride, horizon, device, savepath = \
-        args.hidden, args.layers, args.data, args.epochs, \
-        args.lr, args.workers, args.lags, args.stride, args.horizon, args.device, args.savepath
     
     cprint("\nSTOCKPREDICTOR2.0 TRAINING MANY MODELS SCRIPT", "cyan")
+
+    # unload arguments
+    data_path  = control_file['data_path']
+
+    hidden_dim = control_file['model']['hidden']
+    layers     = control_file['model']['layers']
+
+    epochs     = control_file['training']['epochs']
+    lr         = control_file['training']['lr']
+    
+    lags       = control_file['forecasting']['lags']
+    stride     = control_file['forecasting']['stride']
+    horizon    = control_file['forecasting']['horizon']
+    
+    device     = control_file['device']
+    
+    save_path   = control_file['save_path']
 
     # make models folder
     if not os.path.isdir('models'):
@@ -59,18 +68,18 @@ def train(args):
         cprint(f"MODELS folder exists.", "green")
 
     # load data
-    dataset = SP_500(folder)    
+    dataset = SP_500(data_path)    
     cprint("Checkpoint: ", "cyan", end='')
     cprint("S&P500 dataset created for training.", "green")
 
     # make unique model folder
-    k, path = 2, os.path.join('models', savepath)
+    k, path = 2, os.path.join('models', save_path)
     while True:
         if not os.path.isdir(path):
             os.mkdir(path)
             break
         else:
-            path = os.path.join('models', savepath + "_" + str(k))
+            path = os.path.join('models', save_path + "_" + str(k))
             k += 1
     cprint("Checkpoint: ", "cyan", end='')
     cprint(f"{path.upper()} created to store models and logs for this run.", "green")
@@ -107,7 +116,7 @@ def train(args):
             timeseries = timeseries.cuda()
 
         # create model
-        model = LSTM(input_dim=5, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=5)
+        model = LSTM(input_dim=5, hidden_dim=hidden_dim, num_layers=layers, output_dim=5)
         model = model.to(device)
 
         # define loss and optimizer
@@ -189,53 +198,25 @@ def train(args):
     cprint(f"Finished training; models and logging saved to: {path.upper()}\n", "cyan", end="\n")
 
 
-def parse_args():
+def read_control_file():
     '''
-    Saves cmd line arguments for training
+    Read control_file for training.
     
     Outputs:
-        args (dict) - CMD line arguments for training
-            - hidden (int) - Number of hidden layers.
-            - layers (int) - Number of recurrent layers.
-            
-            - data (str) - Path to prices data.
-            
-            - epochs (int) - Number of training epochs.
-            - lr (float) - Learning rate.
-            - workers (int) - Number of worker nodes.
-            
-            - lags (int) - Minimum lags range (252 = 1 year of data)
-            - horizon (int) - Number of days to forecast for recursively.
-            - stride (int) - Stride to walk through data for training (stride = 1 trains on each day).
-            
-            - device (str) - Device to use for training; cuda:n or cpu.
-            
-            - savepath (str) - Path to save models.
+        control_file (dict) - Arguments for training.
     '''
     parser = argparse.ArgumentParser()
-    parser.add_argument('--hidden', type=int, default=4, help='Number of hidden layers.')
-    parser.add_argument('--layers', type=int, default=2, help='Number of recurrent layers')
-
-    parser.add_argument('--data', type=str, default='training_data', help='Path to prices data')
-
-    parser.add_argument('--epochs', type=int, default=3, help='Number of training epochs.')
-    parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
-    parser.add_argument('--workers', type=int, default=0, help='Number of workers')
-
-    parser.add_argument('--lags', type=int, default=252, help='Minimum lags range (252 = 1 year of data)')
-    parser.add_argument('--horizon', type=int, default=5, help='Number of days to forecast for recursively.')
-    parser.add_argument('--stride', type=int, default=32, help='Stride to walk through data for training (stride = 1 trains on each day).')
-
-    parser.add_argument('--device', type=str, default='cuda:0', help='Device to use for training; cuda:n or cpu.')
-
-    parser.add_argument('--savepath', type=str, default='rnn', help='Path to save models.')
-
+    parser.add_argument('--control_file', type=str, default='control_file.json', required=True, help='Path to control file')
     args = parser.parse_args()
+
+    # Read JSON data from control file and load as dictionary
+    with open(args.control_file, 'r') as json_file:
+        control_file = json.load(json_file)
     
-    return args
+    return control_file
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    train(args)
+    control_file = read_control_file()
+    train(control_file)
     
