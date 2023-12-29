@@ -41,7 +41,7 @@ class SP_500(Dataset):
             elif len(df.index) < max:
                 pass
 
-        self.data = files[:2]
+        self.data = files[:1]
 
 
     def __len__(self):

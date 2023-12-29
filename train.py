@@ -14,6 +14,7 @@ from termcolor import cprint
 
 from rnn import LSTM
 from dataset import SP_500
+from utils import create_logs, write_logs
 
 
 def train(control_file):
@@ -103,9 +104,8 @@ def train(control_file):
         uniq_path = os.path.join(path, stock.split('.', 1)[0])
         os.mkdir(uniq_path)
         
-        # create logging file
-        with open(os.path.join(uniq_path, 'logs.txt'), 'a') as f:
-            f.write('Time, Avg_Loss, Avg_Accuracy\n')
+        # create logging file and df
+        logs = create_logs(os.path.join(uniq_path, 'logs.csv'), horizon)
 
         # make weights folder
         os.mkdir(os.path.join(uniq_path, 'weights'))
@@ -124,12 +124,12 @@ def train(control_file):
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         best = 100
 
-        for _ in range(epochs):
+        for epoch in range(epochs):
             # logging
             start = time.time()
 
             # initialize train and valid loss and accuracy logging lost
-            loss, acc = [], []
+            losses, accuracies = [], []
 
             # initialize X and Y list of length len(timeseries)-lags with
             X = [] # of size (n, num_feats)
@@ -162,28 +162,26 @@ def train(control_file):
                     x = torch.cat((x, prediction), dim=0)   
 
                 # calculate loss
-                l = criterion(predictions, y)   
-                loss.append(l.item())
+                loss = criterion(predictions, y)   
+                losses.append(loss.item())
                 
-                # checking accuracy of close on last day... horizon days 
-                # CHANGE TO TRACK EACH DAY INDIVIDUALLY
-                #acc.extend([1 - torch.abs(predictions[n, 4] - y[n, 4]).tolist() for n in range(len(horizon))])
-                acc.append((1 - torch.abs(predictions[-1, 4] - y[-1, 4]).item()))
+                # checking accuracy of close on last day for each day forecasted
+                accuracies.extend([1 - torch.abs(predictions[n, 4] - y[n, 4]).tolist() for n in range(horizon)])
 
                 # update model parameters
                 optimizer.zero_grad()   
-                l.backward()         
+                loss.backward()         
                 optimizer.step()        
 
-            # logging
+            # logging time
             end = time.time()
 
             # save most recent model
             torch.save([model.kwargs, model.state_dict()], os.path.join(uniq_path, "weights\last.pth"))
 
             # calculate average metrics
-            avg_loss = sum(loss) / len(loss)
-            avg_acc = sum(acc) / len(acc)
+            avg_loss = sum(losses) / len(losses)
+            avg_accuracies = [sum(col) / len(col) for col in zip(*accuracies)]
 
             # save best model
             if avg_loss < best:
@@ -191,8 +189,7 @@ def train(control_file):
                 torch.save([model.kwargs, model.state_dict()], os.path.join(uniq_path, "weights\\best.pth"))
 
             # logging
-            with open(os.path.join(uniq_path, 'logs.txt'), 'a') as f:
-                f.write(f"{round(end-start, 3)}, {round(avg_loss, 5)}, {round(avg_acc, 5)}\n")
+            logs = write_logs(os.path.join(uniq_path, 'logs.csv'), logs, epoch, end-start, avg_loss, avg_accuracies)
 
     cprint(f"\n\nCheckpoint: ", "cyan", end="")    
     cprint(f"Finished training; models and logging saved to: {path.upper()}\n", "cyan", end="\n")
@@ -206,7 +203,7 @@ def read_control_file():
         control_file (dict) - Arguments for training.
     '''
     parser = argparse.ArgumentParser()
-    parser.add_argument('--control_file', type=str, default='control_file.json', required=True, help='Path to control file')
+    parser.add_argument('--control_file', type=str, default='control_file.json', help='Path to control file')
     args = parser.parse_args()
 
     # Read JSON data from control file and load as dictionary
