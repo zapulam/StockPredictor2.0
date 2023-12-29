@@ -31,10 +31,10 @@ def create_rnn_forecast(input, model, horizon, device):
 
     '''
     # copy data
-    x = input.unsqueeze(0)
+    x = input
 
     # predictions tensor
-    rnn_forecast = torch.ones(1,0,5)
+    rnn_forecast = torch.empty(0,5)
 
     if 'cuda' in device:
         x = x.cuda()
@@ -43,13 +43,13 @@ def create_rnn_forecast(input, model, horizon, device):
     for _ in range(horizon):
     
         # predict one time step
-        pred = torch.unsqueeze(model(x), dim=1)
+        pred = torch.unsqueeze(model(x), dim=0)
         
         # append prediction
-        rnn_forecast = torch.cat((rnn_forecast, pred), dim=1)
+        rnn_forecast = torch.cat((rnn_forecast, pred), dim=0)
 
         # append predicition to input data for next forecast
-        x = torch.cat((x, pred), dim=1)
+        x = torch.cat((x, pred), dim=0)
 
     rnn_forecast = pd.DataFrame(rnn_forecast.cpu().squeeze().detach().numpy(), columns=['Open', 'High', 'Low', 'Volume', 'Close'])
         

@@ -166,7 +166,7 @@ def train(control_file):
                 losses.append(loss.item())
                 
                 # checking accuracy of close on last day for each day forecasted
-                accuracies.extend([1 - torch.abs(predictions[n, 4] - y[n, 4]).tolist() for n in range(horizon)])
+                accuracies.extend([[1 - torch.abs(predictions[n, 4] - y[n, 4]).tolist() for n in range(horizon)]])
 
                 # update model parameters
                 optimizer.zero_grad()   
