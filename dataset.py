@@ -13,35 +13,31 @@ from torch.utils.data import Dataset
 from decomposition import decompose
 
 
-class SP_500(Dataset):
+class Stock_Data(Dataset):
     '''
     S&P 500 Dataset for training RNN to predict future close prices
     '''
-    def __init__(self, folder):
+    def __init__(self, path, lags, horizon, stride):
         '''
         Constructor method
         '''
         self.data = []
-        self.folder = folder
 
-        # create list of files: [A.csv, AAL.csv, ...]
-        all_files = os.listdir(folder)
-        if '_.txt' in all_files: all_files.remove('_.txt')
-        files = []
+        data = pd.read_csv(path).drop(columns=['Adj Close'])
+        
+        # decompose data
+        timeseries = decompose(data)['input']
 
-        # set max file length ( 5 years worth of data )
-        max = 1257
-        for file in all_files:
-            df = pd.read_csv(os.path.join(folder, file), index_col=0)
-            if len(df.index) == max:
-                files.append(file)
-            elif len(df.index) > max:
-                df.iloc[:1257].to_csv(os.path.join(folder, file))
-                files.append(file)
-            elif len(df.index) < max:
-                pass
+        # convert to tensor
+        timeseries = torch.tensor(timeseries.values)
 
-        self.data = files[:1]
+        # create X and Y
+        for i in range(lags, timeseries.shape[0]-horizon, stride):
+            X = timeseries[0:i, :]
+            Y = timeseries[i:i+horizon, :]
+
+            # self.data.append([X, Y])
+            self.data.append([X, Y])
 
 
     def __len__(self):
@@ -52,6 +48,7 @@ class SP_500(Dataset):
             - length (int) - length of dataset
         '''
         length = len(self.data)
+
         return length
 
 
@@ -63,20 +60,12 @@ class SP_500(Dataset):
             idx (int) - index to refernece from self.data
 
         Outputs:
-            - x (tensor) - training input data
-            - mins (tensor) - minimum values for all input features
-            - maxs (tensor) - maximum values for all input features
+            - X (tensor) - model input timeseries data
+            - Y (tensor) - ground truth forecast data
         '''
 
         # read data
-        file = self.data[idx]
-        data = pd.read_csv(os.path.join(self.folder, file)).drop(columns=['Adj Close'])
-        
-        # decompose data
-        input = decompose(data)['input']
+        X, Y = self.data[idx]
 
-        # convert to tensor
-        input = torch.tensor(input.values)
-
-        return input
+        return X, Y
     

@@ -1,3 +1,2 @@
 Issues:
-- Currently RNN just predicts 0.5 (mean)
-- Seasonal analysis output value has no quantitative meaning
+- Option to overwrite current folder

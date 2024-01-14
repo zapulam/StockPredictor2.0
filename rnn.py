@@ -33,9 +33,9 @@ class LSTM(nn.Module):
         Outputs:
             - out (tensor) - prediction ('Open', 'High', 'Low', 'Volume', 'Close')
         '''
-        h0 = torch.zeros(self.num_layers, self.hidden_dim, device=x.device).requires_grad_()
-        c0 = torch.zeros(self.num_layers, self.hidden_dim, device=x.device).requires_grad_()
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_dim, device=x.device).requires_grad_()
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_dim, device=x.device).requires_grad_()
         out, (hn, cn) = self.lstm(x, (h0.detach(), c0.detach()))
-        out = self.fc(out[-1, :])
+        out = self.fc(out[:, -1, :]) 
         return out
     

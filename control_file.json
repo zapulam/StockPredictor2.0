@@ -1,23 +1,21 @@
 {
     "data_path": "training_data",
-
+    "tickers": ["AMZN", "AAPL"],
     "model": {
         "hidden": 16,
         "layers": 4
     },
-
     "training": {
         "epochs": 15,
-        "lr": 0.001
+        "lr": 0.001,
+        "bs": 8,
+        "workers": 0
     },
-
     "forecasting": {
         "lags": 252,
         "horizon": 10,
         "stride": 4
     },
-
     "device": "cuda:0",
-
     "save_path": "rnn"
 }

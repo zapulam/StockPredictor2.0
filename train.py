@@ -8,13 +8,17 @@ import json
 import time
 import torch
 import argparse
+import numpy as np
+import pandas as pd
 
 from tqdm import tqdm
 from termcolor import cprint
+from torch.utils.data import DataLoader
+from sklearn.model_selection import train_test_split
 
 from rnn import LSTM
-from dataset import SP_500
-from utils import create_logs, write_logs
+from dataset import Stock_Data
+from utils import create_logs, write_logs, custom_collate
 
 
 def train(control_file):
@@ -45,11 +49,15 @@ def train(control_file):
     # unload arguments
     data_path  = control_file['data_path']
 
+    tickers    = control_file['tickers']
+
     hidden_dim = control_file['model']['hidden']
     layers     = control_file['model']['layers']
 
     epochs     = control_file['training']['epochs']
     lr         = control_file['training']['lr']
+    bs         = control_file['training']['bs']
+    workers    = control_file['training']['workers']
     
     lags       = control_file['forecasting']['lags']
     stride     = control_file['forecasting']['stride']
@@ -63,15 +71,21 @@ def train(control_file):
     if not os.path.isdir('models'):
         os.mkdir('models')
         cprint("\nCheckpoint: ", "cyan", end='')
-        cprint("MODELS folder created.", "green")
+        cprint("MODELS folder created.")
     else:
         cprint("\nCheckpoint: ", "cyan", end='')
-        cprint(f"MODELS folder exists.", "green")
+        cprint(f"MODELS folder exists.")
 
-    # load data
-    dataset = SP_500(data_path)    
+    # load all data locations
+    files = os.listdir(data_path)
+
+    # get intersection between tickers listed and files found
+    if tickers:
+        tickers = [item + ".csv" for item in tickers]
+        tickers = list(set(files) & set(tickers))
+
     cprint("Checkpoint: ", "cyan", end='')
-    cprint("S&P500 dataset created for training.", "green")
+    cprint("S&P500 files found for training.")
 
     # make unique model folder
     k, path = 2, os.path.join('models', save_path)
@@ -83,23 +97,26 @@ def train(control_file):
             path = os.path.join('models', save_path + "_" + str(k))
             k += 1
     cprint("Checkpoint: ", "cyan", end='')
-    cprint(f"{path.upper()} created to store models and logs for this run.", "green")
+    cprint(f"{path.upper()} created to store models and logs for this run.")
 
     # check if cuda is available
     if (torch.cuda.is_available()) and ('cuda' in device):
         cprint("Checkpoint: ", "cyan", end='')
-        cprint(f"{device.upper()} is found.", "green")
+        cprint(f"{device.upper()} is found.")
     elif (not torch.cuda.is_available()) and ('cuda' in device):
         cprint("Checkpoint: ", "cyan", end='')
-        cprint(f"{device.upper()} is not found, device set to CPU.", "green")
+        cprint(f"{device.upper()} is not found, device set to CPU.")
         device = 'cpu'
     else:
         cprint("Checkpoint: ", "cyan", end='')
-        cprint(f"Device set to CPU.", "green")
+        cprint(f"Device set to CPU.")
+    cprint("")
 
-    cprint("\nStarting training...\n", "green")
+    for i, stock in enumerate(tickers):
+        cprint(f"\nStarting training for '", "cyan", end="")
+        cprint(f"{stock[:-4]}", "green", end="")
+        cprint(f"'", "cyan")
 
-    for idx, stock in enumerate(tqdm(dataset.data, desc='Training Many Models', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
         # create folder for timeseries unique model
         uniq_path = os.path.join(path, stock.split('.', 1)[0])
         os.mkdir(uniq_path)
@@ -110,10 +127,13 @@ def train(control_file):
         # make weights folder
         os.mkdir(os.path.join(uniq_path, 'weights'))
 
-        # load timeseries
-        timeseries = dataset.__getitem__(idx)
-        if 'cuda' in device:
-            timeseries = timeseries.cuda()
+        # load stock data
+        dataset = Stock_Data(os.path.join(data_path, stock), lags, horizon, stride)
+        train, val = train_test_split(dataset, test_size=0.1, random_state=42)
+
+        # create dataloaders
+        trainloader = DataLoader(dataset=train, batch_size=bs, shuffle=True, num_workers=workers, collate_fn=custom_collate)
+        validloader = DataLoader(dataset=val, batch_size=bs, shuffle=True, num_workers=workers, collate_fn=custom_collate)
 
         # create model
         model = LSTM(input_dim=5, hidden_dim=hidden_dim, num_layers=layers, output_dim=5)
@@ -124,54 +144,100 @@ def train(control_file):
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
         best = 100
 
+        # start training epoch
         for epoch in range(epochs):
-            # logging
+            # start time for logging
             start = time.time()
 
+            cprint("\nEpoch: ", "cyan", end='')
+            cprint(f"{epoch+1} ", "green", end='')
+            cprint(f"of ", "cyan", end='')
+            cprint(f"{epochs} ", "green")
+
+
             # initialize train and valid loss and accuracy logging lost
-            losses, accuracies = [], []
+            train_losses, train_accuracies = [], []
+            valid_losses, valid_accuracies = [], []
 
-            # initialize X and Y list of length len(timeseries)-lags with
-            X = [] # of size (n, num_feats)
-            Y = [] # of size (horizon, 5)
+            # training
+            for j, data in enumerate(tqdm(trainloader, desc='Train', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
+                # load X and Y
+                X, Y = data
 
-            # create X and Y
-            for i in range(lags, timeseries.shape[0]-horizon, stride):
-                X.append(timeseries[0:i, :])
-                Y.append(timeseries[i:i+horizon, :])
+                # send to CUDA
+                if 'cuda' in device:
+                    X = X.cuda()
+                    Y = Y.cuda()
 
-            # train model for each sequence
-            for i, x in enumerate(X):
-
-                predictions = torch.empty(0,5)
+                # create predictions tensor for recursive forecasting
+                predictions = torch.empty(X.size()[0], 0, 5)
                 if 'cuda' in device:
                     predictions = predictions.cuda()
 
-                # train and validation
-                x = x.float()
-                y = Y[i].float()
+                # convert to floats
+                X = X.float()
+                Y = Y.float()
 
                 for _ in range(horizon):
                     # predict one time step
-                    prediction = torch.unsqueeze(model(x), dim=0)
+                    prediction = torch.unsqueeze(model(X), dim=1)
                     
                     # append prediction
-                    predictions = torch.cat((predictions, prediction), dim=0)
+                    predictions = torch.cat((predictions, prediction), dim=1)
 
                     # append prediction to input data for next forecast
-                    x = torch.cat((x, prediction), dim=0)   
+                    X = torch.cat((X, prediction), dim=1) 
 
-                # calculate loss
-                loss = criterion(predictions, y)   
-                losses.append(loss.item())
+                # calculate loss                
+                loss = criterion(predictions, Y)   
+                train_losses.append(loss.item())
                 
                 # checking accuracy of close on last day for each day forecasted
-                accuracies.extend([[1 - torch.abs(predictions[n, 4] - y[n, 4]).tolist() for n in range(horizon)]])
+                for k in range(X.size()[0]):
+                    train_accuracies.extend([[1 - torch.abs(predictions[k, n, 4] - Y[k, n, 4]).tolist() for n in range(horizon)]])
 
                 # update model parameters
                 optimizer.zero_grad()   
                 loss.backward()         
-                optimizer.step()        
+                optimizer.step()
+
+            # validating
+            with torch.no_grad():
+                for j, data in enumerate(tqdm(validloader, desc='Valid', ascii=True, bar_format='{l_bar}{bar:50}{r_bar}{bar:-50b}')):
+                    # load X and Y
+                    X, Y = data
+
+                    # send to CUDA
+                    if 'cuda' in device:
+                        X = X.cuda()
+                        Y = Y.cuda()
+
+                    # create predictions tensor for recursive forecasting
+                    predictions = torch.empty(X.size()[0], 0, 5)
+                    if 'cuda' in device:
+                        predictions = predictions.cuda()
+
+                    # convert to floats
+                    X = X.float()
+                    Y = Y.float()
+
+                    for _ in range(horizon):
+                        # predict one time step
+                        prediction = torch.unsqueeze(model(X), dim=1)
+                        
+                        # append prediction
+                        predictions = torch.cat((predictions, prediction), dim=1)
+
+                        # append prediction to input data for next forecast
+                        X = torch.cat((X, prediction), dim=1)   
+
+                    # calculate loss
+                    loss = criterion(predictions, Y)   
+                    valid_losses.append(loss.item())
+                    
+                    # checking accuracy of close on last day for each day forecasted
+                    for k in range(X.size()[0]):
+                        valid_accuracies.extend([[1 - torch.abs(predictions[k, n, 4] - Y[k, n, 4]).tolist() for n in range(horizon)]])    
 
             # logging time
             end = time.time()
@@ -180,19 +246,36 @@ def train(control_file):
             torch.save([model.kwargs, model.state_dict()], os.path.join(uniq_path, "weights\last.pth"))
 
             # calculate average metrics
-            avg_loss = sum(losses) / len(losses)
-            avg_accuracies = [sum(col) / len(col) for col in zip(*accuracies)]
+            avg_train_loss = sum(train_losses) / len(train_losses)
+            avg_train_accuracies = [sum(col) / len(col) for col in zip(*train_accuracies)]
+
+            avg_valid_loss = sum(valid_losses) / len(valid_losses)
+            avg_valid_accuracies = [sum(col) / len(col) for col in zip(*valid_accuracies)]
 
             # save best model
-            if avg_loss < best:
-                best = avg_loss
+            if avg_valid_loss < best:
+                best = avg_valid_loss
                 torch.save([model.kwargs, model.state_dict()], os.path.join(uniq_path, "weights\\best.pth"))
 
             # logging
-            logs = write_logs(os.path.join(uniq_path, 'logs.csv'), logs, epoch, end-start, avg_loss, avg_accuracies)
+            logs = write_logs(os.path.join(uniq_path, 'logs.csv'), logs, epoch, end-start, avg_train_loss, avg_train_accuracies, avg_valid_loss, avg_valid_accuracies)
 
-    cprint(f"\n\nCheckpoint: ", "cyan", end="")    
-    cprint(f"Finished training; models and logging saved to: {path.upper()}\n", "cyan", end="\n")
+            # print logging
+            cprint(f"Time: ", end="")
+            cprint(f"{round(end-start, 3)}   ", "green", end="")
+            cprint(f"Train Loss: ", end="")
+            cprint(f"{round(avg_train_loss, 5)}   ", "green", end="")
+            cprint(f"Train Acc@{horizon}: ", end="")
+            cprint(f"{round(avg_train_accuracies[-1], 5)}   ", "green", end="")
+            cprint(f"Valid Loss: ", end="")
+            cprint(f"{round(avg_valid_loss, 5)}   ", "green", end="")
+            cprint(f"Valid Acc@{horizon}: ", end="")
+            cprint(f"{round(avg_valid_accuracies[-1], 5)}   ", "green", end="\n")
+
+        cprint("\n")  
+
+    cprint(f"Checkpoint: ", "cyan", end="")    
+    cprint(f"Finished training; models and logging saved to: {path.upper()}\n", "green", end="\n")
 
 
 def read_control_file():

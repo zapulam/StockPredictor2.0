@@ -80,12 +80,8 @@ def create_effects_forecast(decomposition, horizon):
         trend_forecast[col] = model.intercept_ + model.coef_ * range(decomposition['data'].index[-1]+1, decomposition['data'].index[-1]+horizon+1)
         trend_forecast[col] = trend_forecast[col] + (decomposition['trend'][col].iloc[-1] - trend_forecast[col].iloc[0] + model.coef_)
 
-        # add seasonal component
-        #seasonality_forecast[col] = decomposition['seasonality'][col][-252:-(252-horizon)]
-        seasonality_forecast[col] = decomposition['seasonality'][col].rolling(window=10, min_periods=1).mean()[-252:-(252-horizon)]
-
     # store effects forecasts
-    effects_forecast = {'trend_forecast': trend_forecast, 'seasonality_forecast': seasonality_forecast.reset_index()}
+    effects_forecast = {'trend_forecast': trend_forecast}
 
     return effects_forecast
 
@@ -124,27 +120,9 @@ def compose(decomposition, effects_forecast, rnn_forecast, horizon):
     # undo normalization
     forecast = (rnn_forecast * (decomposition['maximums'] - decomposition['minimums'])) + decomposition['minimums']
 
-    # undo differencing, reconstructing the values at each time step for multiple columns
-    reconstructed_values = {}
-    for col in decomposition['final_row'].columns:
-        initial_value = decomposition['final_row'][col][0]  # Initial value at time step 0
-        
-        # Calculate cumulative sum of differences and add it to the initial value
-        reconstructed_values[col] = [initial_value] + (forecast[col].cumsum() + initial_value).tolist()
-
     # creating a new DataFrame with reconstructed values for multiple columns
-    forecast = pd.DataFrame(reconstructed_values).iloc[1:].reset_index(drop=True)
+    forecast = pd.DataFrame(forecast).iloc[1:].reset_index(drop=True)
     forecast = pd.concat([df, forecast], axis=1)
-
-    # multiply dow effect
-    for col in forecast.columns:
-        if col not in ['Date', 'DayOfWeek']:
-            forecast['Effect'] = forecast['DayOfWeek'].map(decomposition['dow_effect'][col])
-            forecast[col] = forecast[col] / forecast['Effect']
-            forecast.drop(columns=['Effect'], inplace=True)
-
-    # add seasonal effect
-    comp = forecast + effects_forecast['seasonality_forecast']
 
     # add trend effect
     comp = forecast + effects_forecast['trend_forecast']
@@ -175,7 +153,7 @@ def forecast_pipeline(data, model, horizon, device):
     # decompose data
     decomposition = decompose(data)
 
-    # forecast trend and seasonality
+    # forecast trend
     effects_forecast = create_effects_forecast(decomposition, horizon)
     
     # create residual forecast from model

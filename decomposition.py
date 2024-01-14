@@ -29,10 +29,7 @@ def decompose(data):
     # create decomposition dictionary
     decomp = {'data': data}
     trend = pd.DataFrame()
-    seasonality = pd.DataFrame()
     residuals = pd.DataFrame()
-    dow_effect = pd.DataFrame()
-
 
     # add day of week column
     data['Date'] = pd.to_datetime(data['Date'])
@@ -45,33 +42,20 @@ def decompose(data):
     for col in data.columns:
         if col not in ['Date', 'DayOfWeek']:
             # detrend and deason column
-            trend_seasonal_decomp = sm.tsa.seasonal_decompose(data[col], model='additive', period=252, extrapolate_trend=25, two_sided=False)
-            trend[col] = trend_seasonal_decomp.trend
-            seasonality[col] = trend_seasonal_decomp.seasonal
-            residuals[col] = trend_seasonal_decomp.resid
+            trend_decomp = sm.tsa.seasonal_decompose(data[col], model='additive', period=252, extrapolate_trend=25, two_sided=False)
+            trend[col] = trend_decomp.trend
+            residuals[col] = trend_decomp.resid + trend_decomp.seasonal
 
-            resids = pd.DataFrame({col: trend_seasonal_decomp.resid, 'DayOfWeek': data['DayOfWeek']})
-
-            # remove day of week effects
-            grouped = resids.groupby('DayOfWeek')
-            effect = resids[col].mean() / grouped[col].mean()
-            dow_effect[col] = effect
-
-            effect_df = pd.DataFrame((effect).rename("Effect")).reset_index()
-            resids = pd.merge(resids, effect_df, on='DayOfWeek', how='left')
+            resids = pd.DataFrame({col: trend_decomp.resid, 'DayOfWeek': data['DayOfWeek']})
 
             # assign column to decomposed time series for forecasting
-            series[col] = resids[col] * resids['Effect']
+            series[col] = resids[col]
 
     # add effects to dict
-    decomp.update({'trend': trend, 'seasonality': seasonality, 'residuals': residuals, 'dow_effect': dow_effect})
+    decomp.update({'trend': trend, 'residuals': residuals})
 
     # drop date columns
     series.drop(columns=['Date', 'DayOfWeek'], inplace=True)
-
-    # difference data
-    decomp.update({'final_row': pd.DataFrame(series.iloc[-1]).transpose().reset_index(drop=True)})
-    series = series.diff().iloc[1: , :]
 
     # remove outliers
     for col in series.columns:
